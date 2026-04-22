@@ -1,16 +1,56 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import { useIsMobileDevice } from "@/hooks/useIsMobileDevice";
+import { DesktopNotice } from "@/components/DesktopNotice";
+import { LoginScreen } from "@/components/LoginScreen";
+import { SiniestrosList } from "@/components/SiniestrosList";
+import { SiniestroDetail } from "@/components/SiniestroDetail";
+import { Siniestro } from "@/data/siniestros";
+import { cerrarSesion } from "@/lib/filemaker";
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+type Vista = "login" | "lista" | "detalle";
+
+const Index = () => {
+  const isMobile = useIsMobileDevice();
+  const [vista, setVista] = useState<Vista>("login");
+  const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
+
+  if (isMobile === null) {
+    return <div className="min-h-screen gradient-surface" />;
+  }
+
+  if (!isMobile) {
+    return <DesktopNotice />;
+  }
+
+  const logout = () => {
+    cerrarSesion();
+    setSeleccionado(null);
+    setVista("login");
+  };
+
+  if (vista === "login") {
+    return <LoginScreen onLogin={() => setVista("lista")} />;
+  }
+
+  if (vista === "detalle" && seleccionado) {
+    return (
+      <SiniestroDetail
+        siniestro={seleccionado}
+        onBack={() => setVista("lista")}
+        onLogout={logout}
+      />
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
-    </div>
+    <SiniestrosList
+      onSelect={(s) => {
+        setSeleccionado(s);
+        setVista("detalle");
+      }}
+      onLogout={logout}
+    />
   );
 };
-
-const Index = PlaceholderIndex;
 
 export default Index;
