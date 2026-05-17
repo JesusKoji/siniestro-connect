@@ -8,10 +8,11 @@ import { Siniestro, siniestrosMock } from "@/data/siniestros";
 
 export const FM_CONFIG = {
   host: import.meta.env.VITE_FM_HOST ?? "", // ej: "https://localhost" o vacío para mismo origen
-  database: import.meta.env.VITE_FM_DATABASE ?? "Siniestros",
-  layout: import.meta.env.VITE_FM_LAYOUT ?? "API_Siniestros",
-  scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "EnviarEnlace",
-  estadoEnCurso: import.meta.env.VITE_FM_ESTADO_EN_CURSO ?? "En curso",
+  database: import.meta.env.VITE_FM_DATABASE ?? "GestionPericial",
+  layout: import.meta.env.VITE_FM_LAYOUT ?? "API_EnlacesSiniestros",
+  scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "SMS",
+  filtroEnCursoCampo: import.meta.env.VITE_FM_FILTRO_EN_CURSO_CAMPO ?? "FechaCierre",
+  filtroEnCursoValor: import.meta.env.VITE_FM_FILTRO_EN_CURSO_VALOR ?? "=",
 };
 
 const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? "true") !== "false";
@@ -74,22 +75,32 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ query: [{ estado: FM_CONFIG.estadoEnCurso }], limit: "200" }),
+      body: JSON.stringify({
+        query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }],
+        limit: "200",
+      }),
     }
   );
 
   if (!res.ok) throw new Error("No se pudieron cargar los siniestros");
   const data = await res.json();
 
-  return data.response.data.map((record: { recordId: string; fieldData: Record<string, string> }) => ({
-    id: record.recordId,
-    numero: record.fieldData.NumeroSiniestro ?? "",
-    compania: record.fieldData.Compania ?? "",
-    asegurado: record.fieldData.Asegurado ?? "",
-    direccion: record.fieldData.Direccion ?? "",
-    fechaApertura: record.fieldData.FechaApertura ?? new Date().toISOString(),
-    tipo: record.fieldData.TipoSiniestro ?? "",
-  }));
+  return data.response.data.map((record: { recordId: string; fieldData: Record<string, string> }) => {
+    const fieldData = record.fieldData;
+    return {
+      id: record.recordId,
+      numero: fieldData.NumeroSiniestro ?? "",
+      compania: getFirstValue(fieldData, [
+        "siniestros_polizas_COMPANIAS::Alias",
+        "siniestros_polizas_COMPANIAS:Alias",
+        "Alias",
+      ]),
+      asegurado: fieldData.Asegurado ?? "",
+      direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? "",
+      fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo"]) || new Date().toISOString(),
+      tipo: fieldData.TipoSiniestro ?? "",
+    };
+  });
 }
 
 export async function ejecutarScriptEnviarEnlace(
@@ -155,6 +166,14 @@ export function abrirWhatsApp(result: EnviarEnlaceResult) {
   if (!url) return false;
   window.location.href = url;
   return true;
+}
+
+function getFirstValue(fieldData: Record<string, string>, keys: string[]) {
+  for (const key of keys) {
+    const value = fieldData[key];
+    if (value) return value;
+  }
+  return "";
 }
 
 function crearWhatsAppUrl(movil: string, texto: string) {
