@@ -1,56 +1,15 @@
-import { useState } from "react";
 import { useIsMobileDevice } from "@/hooks/useIsMobileDevice";
-import { DesktopNotice } from "@/components/DesktopNotice";
-import { LoginScreen } from "@/components/LoginScreen";
-import { SiniestrosList } from "@/components/SiniestrosList";
-import { SiniestroDetail } from "@/components/SiniestroDetail";
-import { Siniestro } from "@/data/siniestros";
-import { cerrarSesion } from "@/lib/filemaker";
-
-type Vista = "login" | "lista" | "detalle";
+import { MobileApp } from "@/apps/MobileApp";
+import { DesktopApp } from "@/apps/DesktopApp";
 
 const Index = () => {
   const isMobile = useIsMobileDevice();
-  const [vista, setVista] = useState<Vista>("login");
-  const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
 
   if (isMobile === null) {
     return <div className="min-h-screen gradient-surface" />;
   }
 
-  if (!isMobile) {
-    return <DesktopNotice />;
-  }
-
-  const logout = () => {
-    cerrarSesion();
-    setSeleccionado(null);
-    setVista("login");
-  };
-
-  if (vista === "login") {
-    return <LoginScreen onLogin={() => setVista("lista")} />;
-  }
-
-  if (vista === "detalle" && seleccionado) {
-    return (
-      <SiniestroDetail
-        siniestro={seleccionado}
-        onBack={() => setVista("lista")}
-        onLogout={logout}
-      />
-    );
-  }
-
-  return (
-    <SiniestrosList
-      onSelect={(s) => {
-        setSeleccionado(s);
-        setVista("detalle");
-      }}
-      onLogout={logout}
-    />
-  );
+  return isMobile ? <MobileApp /> : <DesktopApp />;
 };
 
 export default Index;
