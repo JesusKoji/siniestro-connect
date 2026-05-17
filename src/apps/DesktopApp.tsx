@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Siniestro } from "@/data/siniestros";
-import { cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso } from "@/lib/filemaker";
+import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso } from "@/lib/filemaker";
 import {
   Building2,
   Calendar,
@@ -11,6 +12,7 @@ import {
   Loader2,
   LogOut,
   MapPin,
+  Phone,
   Search,
   Send,
   Tag,
@@ -22,6 +24,7 @@ export const DesktopApp = () => {
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
   const [query, setQuery] = useState("");
+  const [movil, setMovil] = useState("");
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
@@ -38,6 +41,10 @@ export const DesktopApp = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setMovil("");
+  }, [seleccionado?.id]);
+
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return siniestros;
@@ -53,8 +60,9 @@ export const DesktopApp = () => {
     if (!seleccionado) return;
     setEnviando(true);
     try {
-      await ejecutarScriptEnviarEnlace(seleccionado.numero);
-      toast.success("Enlace enviado correctamente");
+      const result = await ejecutarScriptEnviarEnlace(seleccionado.numero, movil);
+      const abierto = abrirWhatsApp(result);
+      toast.success(abierto ? "Abriendo WhatsApp" : "Enlace generado correctamente");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al enviar el enlace";
       toast.error(msg);
@@ -157,20 +165,38 @@ export const DesktopApp = () => {
                     <h2 className="text-4xl font-bold">{seleccionado.numero}</h2>
                     <p className="mt-1 text-primary-foreground/80">{seleccionado.compania}</p>
                   </div>
-                  <Button
-                    onClick={enviarEnlace}
-                    disabled={enviando}
-                    className="h-12 rounded-xl bg-white/95 px-6 font-semibold text-primary hover:bg-white"
-                  >
-                    {enviando ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Enviar enlace
-                      </>
-                    )}
-                  </Button>
+                  <div className="w-full rounded-2xl bg-white/10 p-4 backdrop-blur-sm xl:w-96">
+                    <Label htmlFor="desktop-movil" className="text-xs font-medium text-primary-foreground/80">
+                      Móvil del destinatario
+                    </Label>
+                    <div className="mt-2 flex gap-2">
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-foreground/70" />
+                        <Input
+                          id="desktop-movil"
+                          inputMode="tel"
+                          value={movil}
+                          onChange={(e) => setMovil(e.target.value)}
+                          placeholder="Ej. 600123456"
+                          className="h-12 rounded-xl border-white/30 bg-white/95 pl-10 text-primary placeholder:text-primary/45"
+                        />
+                      </div>
+                      <Button
+                        onClick={enviarEnlace}
+                        disabled={enviando || !movil.trim()}
+                        className="h-12 rounded-xl bg-white/95 px-5 font-semibold text-primary hover:bg-white"
+                      >
+                        {enviando ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <>
+                            <Send className="mr-2 h-4 w-4" />
+                            WhatsApp
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
