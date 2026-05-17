@@ -1,20 +1,20 @@
 /**
  * Cliente FileMaker Data API.
  *
- * NOTA: Actualmente devuelve datos de ejemplo (mock). Cuando despliegues la web
- * en el mismo Mac mini que FileMaker Server, cambia USE_MOCK a false y revisa
- * FM_CONFIG con los nombres reales de base, layout y script.
+ * La app puede trabajar en modo mock o contra FileMaker real usando variables de entorno Vite.
+ * En desarrollo crea un .env.local basado en .env.example.
  */
 import { Siniestro, siniestrosMock } from "@/data/siniestros";
 
 export const FM_CONFIG = {
-  host: "", // ej: "https://localhost" o vacío para mismo origen
-  database: "Siniestros",
-  layout: "API_Siniestros",
-  scriptEnviarEnlace: "EnviarEnlace",
+  host: import.meta.env.VITE_FM_HOST ?? "", // ej: "https://localhost" o vacío para mismo origen
+  database: import.meta.env.VITE_FM_DATABASE ?? "Siniestros",
+  layout: import.meta.env.VITE_FM_LAYOUT ?? "API_Siniestros",
+  scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "EnviarEnlace",
+  estadoEnCurso: import.meta.env.VITE_FM_ESTADO_EN_CURSO ?? "En curso",
 };
 
-const USE_MOCK = true; // Cambiar a false cuando se conecte FileMaker real
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? "true") !== "false";
 
 let token: string | null = null;
 
@@ -74,7 +74,7 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ query: [{ estado: "En curso" }], limit: "200" }),
+      body: JSON.stringify({ query: [{ estado: FM_CONFIG.estadoEnCurso }], limit: "200" }),
     }
   );
 
