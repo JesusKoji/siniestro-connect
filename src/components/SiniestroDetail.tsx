@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Siniestro } from "@/data/siniestros";
-import { ejecutarScriptEnviarEnlace } from "@/lib/filemaker";
+import { abrirWhatsApp, ejecutarScriptEnviarEnlace } from "@/lib/filemaker";
 import {
   ArrowLeft,
   Send,
@@ -14,6 +16,7 @@ import {
   MapPin,
   Calendar,
   Tag,
+  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,13 +27,15 @@ interface SiniestroDetailProps {
 }
 
 export const SiniestroDetail = ({ siniestro, onBack, onLogout }: SiniestroDetailProps) => {
+  const [movil, setMovil] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   const enviarEnlace = async () => {
     setEnviando(true);
     try {
-      await ejecutarScriptEnviarEnlace(siniestro.numero);
-      toast.success("Enlace enviado correctamente");
+      const result = await ejecutarScriptEnviarEnlace(siniestro.numero, movil);
+      const abierto = abrirWhatsApp(result);
+      toast.success(abierto ? "Abriendo WhatsApp" : "Enlace generado correctamente");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al enviar el enlace";
       toast.error(msg);
@@ -66,7 +71,7 @@ export const SiniestroDetail = ({ siniestro, onBack, onLogout }: SiniestroDetail
         </div>
       </header>
 
-      <div className="flex-1 px-5 pt-6 pb-32">
+      <div className="flex-1 px-5 pt-6 pb-44">
         {/* Hero del siniestro */}
         <div className="rounded-3xl gradient-hero p-6 text-primary-foreground shadow-medium mb-5 animate-fade-in-up">
           <p className="text-xs uppercase tracking-widest text-primary-foreground/70 mb-2">
@@ -102,9 +107,26 @@ export const SiniestroDetail = ({ siniestro, onBack, onLogout }: SiniestroDetail
       {/* Barra de acciones fija */}
       <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border/60 px-5 pt-3 pb-5 safe-bottom">
         <div className="space-y-2.5 max-w-md mx-auto">
+          <div className="space-y-1.5">
+            <Label htmlFor="movil" className="text-xs font-medium text-muted-foreground">
+              Móvil del destinatario
+            </Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                id="movil"
+                inputMode="tel"
+                value={movil}
+                onChange={(e) => setMovil(e.target.value)}
+                placeholder="Ej. 600123456"
+                className="h-11 rounded-xl pl-10"
+              />
+            </div>
+          </div>
+
           <Button
             onClick={enviarEnlace}
-            disabled={enviando}
+            disabled={enviando || !movil.trim()}
             className="w-full h-12 rounded-xl gradient-accent hover:opacity-95 text-accent-foreground font-semibold shadow-glow transition-smooth"
           >
             {enviando ? (
@@ -112,7 +134,7 @@ export const SiniestroDetail = ({ siniestro, onBack, onLogout }: SiniestroDetail
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Enviar enlace
+                Enviar por WhatsApp
               </>
             )}
           </Button>
