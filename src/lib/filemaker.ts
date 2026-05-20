@@ -36,10 +36,7 @@ export interface EnviarEnlaceResult {
   raw?: unknown;
 }
 
-type FileMakerRecord = {
-  recordId: string;
-  fieldData: Record<string, string>;
-};
+type FileMakerRecord = { recordId: string; fieldData: Record<string, string> };
 
 async function login(usuario: string, password: string): Promise<string> {
   if (USE_MOCK) {
@@ -48,84 +45,55 @@ async function login(usuario: string, password: string): Promise<string> {
     token = "mock-token";
     return token;
   }
-
   const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/sessions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Basic " + btoa(`${usuario}:${password}`),
-    },
+    headers: { "Content-Type": "application/json", Authorization: "Basic " + btoa(`${usuario}:${password}`) },
     body: JSON.stringify({}),
   });
-
   if (!res.ok) throw new Error("Usuario o contraseña incorrectos");
   const data = await res.json();
   token = data.response.token;
   return token!;
 }
 
-export async function autenticar(usuario: string, password: string) {
-  return login(usuario, password);
-}
+export async function autenticar(usuario: string, password: string) { return login(usuario, password); }
+export function cerrarSesion() { token = null; }
 
-export function cerrarSesion() {
-  token = null;
+async function fmRequest(layout: string, path: string, init: RequestInit = {}) {
+  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${layout}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || `Error FileMaker ${res.status}`);
+  return data;
 }
 
 export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
-  if (USE_MOCK) {
-    await wait(400);
-    return siniestrosMock;
-  }
-
+  if (USE_MOCK) { await wait(400); return siniestrosMock; }
   const registrosFiltrados = await buscarRegistrosEnCurso();
   if (registrosFiltrados.length > 0) return registrosFiltrados.map(mapearSiniestro);
   if (!FALLBACK_LISTAR_REGISTROS) return [];
-
-  debug("La busqueda por FechaCierre no devolvio registros. Probando lectura y filtro en cliente.");
   const registros = await listarRegistrosLayout(FM_CONFIG.layout, 200);
   const campoFiltro = FM_CONFIG.filtroEnCursoCampo;
-  const filtradosEnCliente = registros.filter((record) => {
-    const valor = record.fieldData[campoFiltro];
-    return valor === undefined || valor === null || String(valor).trim() === "";
-  });
-  debug("Fallback registros", { total: registros.length, filtrados: filtradosEnCliente.length, campoFiltro });
-  return filtradosEnCliente.map(mapearSiniestro);
+  return registros.filter((record) => String(record.fieldData[campoFiltro] ?? "").trim() === "").map(mapearSiniestro);
 }
 
 export async function listarAsegurados(limit = 100): Promise<Asegurado[]> {
-  if (USE_MOCK) {
-    await wait(250);
-    return [aseguradoMock];
-  }
-  const registros = await listarRegistrosLayout(FM_CONFIG.layoutAsegurados, limit);
-  return registros.map(mapearAsegurado);
+  if (USE_MOCK) { await wait(250); return [aseguradoMock]; }
+  return (await listarRegistrosLayout(FM_CONFIG.layoutAsegurados, limit)).map(mapearAsegurado);
 }
 
 export async function obtenerAsegurado(idAsegurado?: string): Promise<Asegurado | null> {
   if (!idAsegurado) return null;
-  if (USE_MOCK) {
-    await wait(250);
-    return aseguradoMock;
-  }
-  const body = { query: [{ _kp_ID_Asegurado: idAsegurado }], limit: "1" };
-  debug("Find asegurado", { layout: FM_CONFIG.layoutAsegurados, body });
-  const data = await findRecords(FM_CONFIG.layoutAsegurados, body, true);
+  if (USE_MOCK) { await wait(250); return aseguradoMock; }
+  const data = await findRecords(FM_CONFIG.layoutAsegurados, { query: [{ _kp_ID_Asegurado: idAsegurado }], limit: "1" }, true);
   const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
   return record ? mapearAsegurado(record) : null;
 }
 
 async function obtenerAseguradoPorRecordId(recordId: string): Promise<Asegurado | null> {
-  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutAsegurados}/records/${recordId}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  const data = await res.json().catch(() => null);
-  debug("Get asegurado by recordId response", data);
-  if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || "No se pudo leer el asegurado guardado");
+  const data = await fmRequest(FM_CONFIG.layoutAsegurados, `/records/${recordId}`);
   const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
   return record ? mapearAsegurado(record) : null;
 }
@@ -135,42 +103,17 @@ export async function buscarAsegurados(texto: string): Promise<Asegurado[]> {
   if (!q) return [];
   if (USE_MOCK) {
     await wait(200);
-    return [aseguradoMock].filter((a) =>
-      [a.displayName, a.nif, a.direccionCompleta, a.poblacion, a.provincia].join(" ").toLowerCase().includes(q.toLowerCase())
-    );
+    return [aseguradoMock].filter((a) => [a.displayName, a.nif, a.direccionCompleta, a.poblacion, a.provincia].join(" ").toLowerCase().includes(q.toLowerCase()));
   }
-  const body = {
-    query: [
-      { NIF: `*${q}*` },
-      { NombreCompleto: `*${q}*` },
-      { RazonSocial: `*${q}*` },
-      { DireccCompleta: `*${q}*` },
-      { Poblacion: `*${q}*` },
-    ],
-    limit: "100",
-  };
-  debug("Find asegurados", { layout: FM_CONFIG.layoutAsegurados, body });
+  const body = { query: [{ NIF: `*${q}*` }, { NombreCompleto: `*${q}*` }, { RazonSocial: `*${q}*` }, { DireccCompleta: `*${q}*` }, { Poblacion: `*${q}*` }], limit: "100" };
   const data = await findRecords(FM_CONFIG.layoutAsegurados, body, true);
   return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearAsegurado);
 }
 
 export async function crearAsegurado(asegurado: Asegurado): Promise<Asegurado> {
   const fieldData = aseguradoToFieldData(asegurado);
-  if (USE_MOCK) {
-    await wait(300);
-    return completarAseguradoLocal({ ...asegurado, id: asegurado.id || `Asegurado_${Date.now()}`, recordId: `${Date.now()}` });
-  }
-  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutAsegurados}/records`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ fieldData }),
-  });
-  const data = await res.json().catch(() => null);
-  debug("Create asegurado response", data);
-  if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || "No se pudo crear el asegurado");
+  if (USE_MOCK) { await wait(300); return completarAseguradoLocal({ ...asegurado, id: asegurado.id || `Asegurado_${Date.now()}`, recordId: `${Date.now()}` }); }
+  const data = await fmRequest(FM_CONFIG.layoutAsegurados, "/records", { method: "POST", body: JSON.stringify({ fieldData }) });
   const recordId = String(data?.response?.recordId ?? "");
   return (recordId ? await obtenerAseguradoPorRecordId(recordId) : null) ?? completarAseguradoLocal({ ...asegurado, recordId });
 }
@@ -178,263 +121,191 @@ export async function crearAsegurado(asegurado: Asegurado): Promise<Asegurado> {
 export async function actualizarAsegurado(asegurado: Asegurado): Promise<Asegurado> {
   if (!asegurado.recordId) throw new Error("No se puede actualizar: falta recordId del asegurado");
   const fieldData = aseguradoToFieldData(asegurado);
-  if (USE_MOCK) {
-    await wait(300);
-    return completarAseguradoLocal(asegurado);
-  }
-  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutAsegurados}/records/${asegurado.recordId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ fieldData }),
-  });
-  const data = await res.json().catch(() => null);
-  debug("Update asegurado response", data);
-  if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || "No se pudo actualizar el asegurado");
+  if (USE_MOCK) { await wait(300); return completarAseguradoLocal(asegurado); }
+  await fmRequest(FM_CONFIG.layoutAsegurados, `/records/${asegurado.recordId}`, { method: "PATCH", body: JSON.stringify({ fieldData }) });
   return (await obtenerAseguradoPorRecordId(asegurado.recordId)) ?? completarAseguradoLocal(asegurado);
 }
 
 export async function obtenerContactosAsegurado(idAsegurado?: string): Promise<ContactoAsegurado[]> {
   if (!idAsegurado) return [];
-  if (USE_MOCK) {
-    await wait(150);
-    return contactosAseguradoMock;
-  }
-  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
-  debug("Find contactos asegurado", { layout: FM_CONFIG.layoutContactosAsegurado, body });
-  const data = await findRecords(FM_CONFIG.layoutContactosAsegurado, body, true);
+  if (USE_MOCK) { await wait(150); return contactosAseguradoMock; }
+  const data = await findRecords(FM_CONFIG.layoutContactosAsegurado, { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" }, true);
   return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearContactoAsegurado);
+}
+
+export async function crearContactoAsegurado(contacto: ContactoAsegurado): Promise<ContactoAsegurado> {
+  if (!contacto.idAsegurado) throw new Error("Falta el asegurado relacionado");
+  const nuevo = { ...contacto, id: contacto.id || `ContactoAseg_${Date.now()}` };
+  if (USE_MOCK) { await wait(200); return { ...nuevo, nombreCompleto: calcularNombreContacto(nuevo) }; }
+  const data = await fmRequest(FM_CONFIG.layoutContactosAsegurado, "/records", { method: "POST", body: JSON.stringify({ fieldData: contactoToFieldData(nuevo, true) }) });
+  const recordId = String(data?.response?.recordId ?? "");
+  return (recordId ? await obtenerContactoPorRecordId(recordId) : null) ?? { ...nuevo, nombreCompleto: calcularNombreContacto(nuevo) };
+}
+
+export async function actualizarContactoAsegurado(contacto: ContactoAsegurado): Promise<ContactoAsegurado> {
+  const recordId = await resolverRecordIdContacto(contacto);
+  if (!recordId) throw new Error("No se puede actualizar: no se localiza el recordId del contacto");
+  if (USE_MOCK) { await wait(200); return { ...contacto, nombreCompleto: calcularNombreContacto(contacto) }; }
+  await fmRequest(FM_CONFIG.layoutContactosAsegurado, `/records/${recordId}`, { method: "PATCH", body: JSON.stringify({ fieldData: contactoToFieldData(contacto, false) }) });
+  return (await obtenerContactoPorRecordId(recordId)) ?? { ...contacto, nombreCompleto: calcularNombreContacto(contacto) };
+}
+
+export async function borrarContactoAsegurado(contacto: ContactoAsegurado): Promise<void> {
+  const recordId = await resolverRecordIdContacto(contacto);
+  if (!recordId) throw new Error("No se puede borrar: no se localiza el recordId del contacto");
+  if (USE_MOCK) { await wait(200); return; }
+  await fmRequest(FM_CONFIG.layoutContactosAsegurado, `/records/${recordId}`, { method: "DELETE" });
+}
+
+async function resolverRecordIdContacto(contacto: ContactoAsegurado): Promise<string> {
+  const posibleRecordId = (contacto as ContactoAsegurado & { recordId?: string }).recordId;
+  if (posibleRecordId) return posibleRecordId;
+  if (USE_MOCK) return contacto.id;
+  const data = await findRecords(FM_CONFIG.layoutContactosAsegurado, { query: [{ _kp_ID_ContactoAseg: contacto.id }], limit: "1" }, true);
+  return String(data?.response?.data?.[0]?.recordId ?? "");
+}
+
+async function obtenerContactoPorRecordId(recordId: string): Promise<ContactoAsegurado | null> {
+  const data = await fmRequest(FM_CONFIG.layoutContactosAsegurado, `/records/${recordId}`);
+  const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
+  return record ? mapearContactoAsegurado(record) : null;
 }
 
 export async function obtenerPolizasAsegurado(idAsegurado?: string): Promise<Poliza[]> {
   if (!idAsegurado) return [];
-  if (USE_MOCK) {
-    await wait(150);
-    return polizasMock;
-  }
-  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
-  debug("Find polizas asegurado", { layout: FM_CONFIG.layoutPolizas, body });
-  const data = await findRecords(FM_CONFIG.layoutPolizas, body, true);
+  if (USE_MOCK) { await wait(150); return polizasMock; }
+  const data = await findRecords(FM_CONFIG.layoutPolizas, { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" }, true);
   return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearPoliza);
 }
 
 export async function obtenerSiniestrosAsegurado(idAsegurado?: string): Promise<Siniestro[]> {
   if (!idAsegurado) return [];
-  if (USE_MOCK) {
-    await wait(150);
-    return siniestrosMock;
-  }
-  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
-  debug("Find siniestros asegurado", { layout: FM_CONFIG.layoutSiniestros, body });
-  const data = await findRecords(FM_CONFIG.layoutSiniestros, body, true);
+  if (USE_MOCK) { await wait(150); return siniestrosMock; }
+  const data = await findRecords(FM_CONFIG.layoutSiniestros, { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" }, true);
   return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearSiniestro);
 }
 
 async function buscarRegistrosEnCurso(): Promise<FileMakerRecord[]> {
-  const body = { query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }], limit: "200" };
-  debug("Find siniestros", { layout: FM_CONFIG.layout, body });
-  const data = await findRecords(FM_CONFIG.layout, body);
-  debug("Find siniestros response", data);
+  const data = await findRecords(FM_CONFIG.layout, { query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }], limit: "200" });
   return data?.response?.data ?? [];
 }
 
 async function findRecords(layout: string, body: object, emptyIsOk = false) {
-  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${layout}/_find`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
+  try {
+    const data = await fmRequest(layout, "/_find", { method: "POST", body: JSON.stringify(body) });
     const code = data?.messages?.[0]?.code;
     if (emptyIsOk && code === "401") return { response: { data: [] }, messages: data?.messages };
-    throw new Error(getFileMakerErrorMessage(data) || `No se pudo consultar el layout ${layout}`);
+    return data;
+  } catch (error) {
+    if (emptyIsOk && error instanceof Error && error.message.includes("401")) return { response: { data: [] } };
+    throw error;
   }
-  const code = data?.messages?.[0]?.code;
-  if (emptyIsOk && code === "401") return { response: { data: [] }, messages: data?.messages };
-  return data;
 }
 
 async function listarRegistrosLayout(layout: string, limit = 200): Promise<FileMakerRecord[]> {
-  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${layout}/records?_limit=${limit}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  const data = await res.json().catch(() => null);
-  debug(`List records response ${layout}`, data);
-  if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || `No se pudieron listar registros del layout ${layout}`);
+  const data = await fmRequest(layout, `/records?_limit=${limit}`);
   return data?.response?.data ?? [];
 }
 
 function mapearSiniestro(record: FileMakerRecord): Siniestro {
-  const fieldData = record.fieldData;
+  const f = record.fieldData;
   return {
-    id: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]) || record.recordId,
-    idSiniestro: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]),
-    idAsegurado: fieldData._kf_ID_Asegurado ?? "",
-    idPoliza: fieldData._kf_ID_Poliza ?? "",
-    numero: fieldData.NumeroSiniestro ?? "",
-    compania: getFirstValue(fieldData, ["siniestros_polizas_COMPANIAS::Alias", "siniestros_polizas_COMPANIAS:Alias", "Alias"]),
-    asegurado: fieldData.Asegurado ?? getFirstValue(fieldData, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
-    direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
-    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo", "FechaRecepcion"]) || new Date().toISOString(),
-    tipo: fieldData.TipoSiniestro ?? "",
+    id: getFirstValue(f, ["_kp_ID_Siniestro", "id"]) || record.recordId,
+    idSiniestro: getFirstValue(f, ["_kp_ID_Siniestro", "id"]),
+    idAsegurado: f._kf_ID_Asegurado ?? "",
+    idPoliza: f._kf_ID_Poliza ?? "",
+    numero: f.NumeroSiniestro ?? "",
+    compania: getFirstValue(f, ["siniestros_polizas_COMPANIAS::Alias", "siniestros_polizas_COMPANIAS:Alias", "Alias"]),
+    asegurado: f.Asegurado ?? getFirstValue(f, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
+    direccion: f.zVistaDireccionCrawfordEnLinea ?? getFirstValue(f, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
+    fechaApertura: getFirstValue(f, ["FechaApertura", "FechaAlta", "FechaEncargo", "FechaRecepcion"]) || new Date().toISOString(),
+    tipo: f.TipoSiniestro ?? "",
   };
 }
 
 export async function obtenerDetalleSiniestro(siniestro: Siniestro): Promise<Siniestro> {
   if (siniestro.idAsegurado && siniestro.idPoliza) return siniestro;
-  if (USE_MOCK) {
-    await wait(200);
-    return siniestro;
-  }
-  const idSiniestro = siniestro.idSiniestro || siniestro.id;
-  const body = { query: [{ _kp_ID_Siniestro: idSiniestro }], limit: "1" };
-  debug("Find detalle siniestro", { layout: FM_CONFIG.layoutSiniestros, body });
-  const data = await findRecords(FM_CONFIG.layoutSiniestros, body, true);
-  debug("Find detalle siniestro response", data);
+  if (USE_MOCK) { await wait(200); return siniestro; }
+  const data = await findRecords(FM_CONFIG.layoutSiniestros, { query: [{ _kp_ID_Siniestro: siniestro.idSiniestro || siniestro.id }], limit: "1" }, true);
   const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
   return record ? { ...siniestro, ...mapearSiniestro(record) } : siniestro;
 }
 
 function mapearAsegurado(record: FileMakerRecord): Asegurado {
-  const fieldData = record.fieldData;
-  const nombre = fieldData.Nombre ?? "";
-  const apellido1 = fieldData.Apellido1 ?? "";
-  const apellido2 = fieldData.Apellido2 ?? "";
-  const nombreCompleto = getFirstValue(fieldData, ["NombreCompleto", "Apellidos"]);
-  const razonSocial = fieldData.RazonSocial ?? "";
+  const f = record.fieldData;
+  const nombre = f.Nombre ?? "";
+  const apellido1 = f.Apellido1 ?? "";
+  const apellido2 = f.Apellido2 ?? "";
+  const nombreCompleto = getFirstValue(f, ["NombreCompleto", "Apellidos"]);
+  const razonSocial = f.RazonSocial ?? "";
   const displayName = razonSocial || nombreCompleto || [nombre, apellido1, apellido2].filter(Boolean).join(" ");
   return {
-    id: fieldData._kp_ID_Asegurado || record.recordId,
+    id: f._kp_ID_Asegurado || record.recordId,
     recordId: record.recordId,
-    nif: fieldData.NIF ?? "",
-    tipoPersona: getFirstValue(fieldData, ["TipoAseg", "TipoPersona"]),
+    nif: f.NIF ?? "",
+    tipoPersona: getFirstValue(f, ["TipoAseg", "TipoPersona"]),
     nombre,
     apellido1,
     apellido2,
     nombreCompleto,
     razonSocial,
     displayName,
-    via: fieldData.Via ?? "",
-    direccion: fieldData.Direccion ?? "",
-    numeroCalle: fieldData.NumeroCalle ?? "",
-    bloque: fieldData.Bloque ?? "",
-    escalera: fieldData.Escalera ?? "",
-    planta: fieldData.Planta ?? "",
-    puerta: fieldData.Puerta ?? "",
-    codigoPostal: fieldData.CodPostal ?? "",
-    poblacion: fieldData.Poblacion ?? "",
-    provincia: fieldData.Provincia ?? "",
-    pais: fieldData.Pais ?? "",
-    direccionCompleta: getFirstValue(fieldData, ["DireccCompleta", "DireccionCompleta"]),
-    email: fieldData.email ?? fieldData.Email ?? "",
-    telefono: fieldData.Telefono ?? "",
+    via: f.Via ?? "",
+    direccion: f.Direccion ?? "",
+    numeroCalle: f.NumeroCalle ?? "",
+    bloque: f.Bloque ?? "",
+    escalera: f.Escalera ?? "",
+    planta: f.Planta ?? "",
+    puerta: f.Puerta ?? "",
+    codigoPostal: f.CodPostal ?? "",
+    poblacion: f.Poblacion ?? "",
+    provincia: f.Provincia ?? "",
+    pais: f.Pais ?? "",
+    direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]),
+    email: f.email ?? f.Email ?? "",
+    telefono: f.Telefono ?? "",
   };
 }
 
-function aseguradoToFieldData(asegurado: Asegurado): Record<string, string> {
+function aseguradoToFieldData(a: Asegurado): Record<string, string> {
+  return limpiarFieldData({ NIF: a.nif, TipoAseg: a.tipoPersona, Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
+}
+
+function contactoToFieldData(c: ContactoAsegurado, includeKeys: boolean): Record<string, string> {
   return limpiarFieldData({
-    NIF: asegurado.nif,
-    TipoAseg: asegurado.tipoPersona,
-    Nombre: asegurado.nombre,
-    Apellido1: asegurado.apellido1,
-    Apellido2: asegurado.apellido2,
-    RazonSocial: asegurado.razonSocial,
-    Via: asegurado.via,
-    Direccion: asegurado.direccion,
-    NumeroCalle: asegurado.numeroCalle,
-    Bloque: asegurado.bloque,
-    Escalera: asegurado.escalera,
-    Planta: asegurado.planta,
-    Puerta: asegurado.puerta,
-    CodPostal: asegurado.codigoPostal,
-    Poblacion: asegurado.poblacion,
-    Provincia: asegurado.provincia,
-    Pais: asegurado.pais,
-    email: asegurado.email,
-    Telefono: asegurado.telefono,
+    ...(includeKeys ? { _kp_ID_ContactoAseg: c.id, _kf_ID_Asegurado: c.idAsegurado } : {}),
+    Nombre: c.nombre,
+    NombreCompleto: c.nombreCompleto || calcularNombreContacto(c),
+    Cargo: c.cargo,
+    Telefono: c.telefono,
+    Telefono2: c.telefono2,
+    Movil: c.movil,
+    Mail: c.mail,
+    Notas: c.notas,
   });
 }
 
-function limpiarFieldData(data: Record<string, string | undefined>) {
-  return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Record<string, string>;
-}
-
-function calcularNombreCompleto(asegurado: Asegurado) {
-  return [asegurado.nombre, asegurado.apellido1, asegurado.apellido2].filter(Boolean).join(" ");
-}
-
-function calcularDisplayName(asegurado: Asegurado) {
-  return asegurado.razonSocial || asegurado.nombreCompleto || calcularNombreCompleto(asegurado);
-}
-
-function calcularDireccionCompleta(asegurado: Asegurado) {
-  return [
-    [asegurado.via, asegurado.direccion, asegurado.numeroCalle].filter(Boolean).join(" "),
-    [asegurado.bloque ? `Bloque ${asegurado.bloque}` : "", asegurado.escalera ? `Esc. ${asegurado.escalera}` : "", asegurado.planta ? `Planta ${asegurado.planta}` : "", asegurado.puerta ? `Puerta ${asegurado.puerta}` : ""].filter(Boolean).join(" "),
-    [asegurado.codigoPostal, asegurado.poblacion].filter(Boolean).join(" "),
-    asegurado.provincia,
-    asegurado.pais,
-  ].filter(Boolean).join(" · ");
-}
-
-function completarAseguradoLocal(asegurado: Asegurado): Asegurado {
-  return {
-    ...asegurado,
-    nombreCompleto: calcularNombreCompleto(asegurado),
-    displayName: calcularDisplayName(asegurado),
-    direccionCompleta: calcularDireccionCompleta(asegurado),
-  };
-}
+function limpiarFieldData(data: Record<string, string | undefined>) { return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Record<string, string>; }
+function calcularNombreCompleto(a: Asegurado) { return [a.nombre, a.apellido1, a.apellido2].filter(Boolean).join(" "); }
+function calcularDisplayName(a: Asegurado) { return a.razonSocial || a.nombreCompleto || calcularNombreCompleto(a); }
+function calcularNombreContacto(c: ContactoAsegurado) { return c.nombreCompleto || c.nombre; }
+function calcularDireccionCompleta(a: Asegurado) { return [[a.via, a.direccion, a.numeroCalle].filter(Boolean).join(" "), [a.bloque ? `Bloque ${a.bloque}` : "", a.escalera ? `Esc. ${a.escalera}` : "", a.planta ? `Planta ${a.planta}` : "", a.puerta ? `Puerta ${a.puerta}` : ""].filter(Boolean).join(" "), [a.codigoPostal, a.poblacion].filter(Boolean).join(" "), a.provincia, a.pais].filter(Boolean).join(" · "); }
+function completarAseguradoLocal(a: Asegurado): Asegurado { return { ...a, nombreCompleto: calcularNombreCompleto(a), displayName: calcularDisplayName(a), direccionCompleta: calcularDireccionCompleta(a) }; }
 
 function mapearContactoAsegurado(record: FileMakerRecord): ContactoAsegurado {
   const f = record.fieldData;
-  return {
-    id: f._kp_ID_ContactoAseg || record.recordId,
-    idAsegurado: f._kf_ID_Asegurado ?? "",
-    nombre: f.Nombre ?? "",
-    nombreCompleto: f.NombreCompleto ?? f.Nombre ?? "",
-    cargo: f.Cargo ?? "",
-    telefono: f.Telefono ?? "",
-    telefono2: f.Telefono2 ?? "",
-    movil: f.Movil ?? "",
-    mail: f.Mail ?? f.email ?? "",
-    notas: f.Notas ?? "",
-  };
+  return { id: f._kp_ID_ContactoAseg || record.recordId, idAsegurado: f._kf_ID_Asegurado ?? "", nombre: f.Nombre ?? "", nombreCompleto: f.NombreCompleto ?? f.Nombre ?? "", cargo: f.Cargo ?? "", telefono: f.Telefono ?? "", telefono2: f.Telefono2 ?? "", movil: f.Movil ?? "", mail: f.Mail ?? f.email ?? "", notas: f.Notas ?? "", ...( { recordId: record.recordId } as object ) };
 }
 
 function mapearPoliza(record: FileMakerRecord): Poliza {
   const f = record.fieldData;
-  return {
-    id: f._kp_ID_Poliza || record.recordId,
-    idAsegurado: f._kf_ID_Asegurado ?? "",
-    numeroPoliza: f.NumeroPoliza ?? "",
-    direccionCompleta: getFirstValue(f, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
-    poblacion: f.Poblacion ?? "",
-    provincia: f.Provincia ?? "",
-    agente: f.Agente ?? "",
-    telefonoAgente: f.TlfAgente ?? f.TlfAgente2 ?? "",
-    emailAgente: f.EmailAgente ?? "",
-  };
+  return { id: f._kp_ID_Poliza || record.recordId, idAsegurado: f._kf_ID_Asegurado ?? "", numeroPoliza: f.NumeroPoliza ?? "", direccionCompleta: getFirstValue(f, ["DireccionCompleta", "DireccCompleta", "Direccion"]), poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", agente: f.Agente ?? "", telefonoAgente: f.TlfAgente ?? f.TlfAgente2 ?? "", emailAgente: f.EmailAgente ?? "" };
 }
 
 export async function ejecutarScriptEnviarEnlace(numeroSiniestro: string, movil: string): Promise<EnviarEnlaceResult> {
   const movilNormalizado = normalizarMovil(movil);
   if (!movilNormalizado) throw new Error("Introduce un numero de movil valido");
-  if (USE_MOCK) {
-    await wait(800);
-    const texto = `Enlace de subida de documentacion para el siniestro ${numeroSiniestro}: https://example.com/subida/${encodeURIComponent(numeroSiniestro)}`;
-    return { ok: true, movil: movilNormalizado, texto, url: crearWhatsAppUrl(movilNormalizado, texto) };
-  }
+  if (USE_MOCK) { await wait(800); const texto = `Enlace de subida de documentacion para el siniestro ${numeroSiniestro}: https://example.com/subida/${encodeURIComponent(numeroSiniestro)}`; return { ok: true, movil: movilNormalizado, texto, url: crearWhatsAppUrl(movilNormalizado, texto) }; }
   const scriptParam = { numeroSiniestro, movil: movilNormalizado };
   const url = `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/script/${encodeURIComponent(FM_CONFIG.scriptEnviarEnlace)}?script.param=${encodeURIComponent(JSON.stringify(scriptParam))}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -442,59 +313,13 @@ export async function ejecutarScriptEnviarEnlace(numeroSiniestro: string, movil:
   const data = await res.json();
   const scriptResult = data?.response?.scriptResult;
   if (!scriptResult) return { ok: true, raw: data };
-  try {
-    const parsed = JSON.parse(scriptResult) as EnviarEnlaceResult;
-    return {
-      ...parsed,
-      ok: parsed.ok ?? true,
-      movil: parsed.movil ?? movilNormalizado,
-      url: parsed.url ?? (parsed.texto ? crearWhatsAppUrl(parsed.movil ?? movilNormalizado, parsed.texto) : undefined),
-      raw: data,
-    };
-  } catch {
-    return { ok: true, texto: scriptResult, movil: movilNormalizado, raw: data };
-  }
+  try { const parsed = JSON.parse(scriptResult) as EnviarEnlaceResult; return { ...parsed, ok: parsed.ok ?? true, movil: parsed.movil ?? movilNormalizado, url: parsed.url ?? (parsed.texto ? crearWhatsAppUrl(parsed.movil ?? movilNormalizado, parsed.texto) : undefined), raw: data }; } catch { return { ok: true, texto: scriptResult, movil: movilNormalizado, raw: data }; }
 }
 
-export function abrirWhatsApp(result: EnviarEnlaceResult) {
-  const url = result.url ?? (result.movil && result.texto ? crearWhatsAppUrl(result.movil, result.texto) : undefined);
-  if (!url) return false;
-  window.location.href = url;
-  return true;
-}
-
-function getFirstValue(fieldData: Record<string, string>, keys: string[]) {
-  for (const key of keys) {
-    const value = fieldData[key];
-    if (value) return value;
-  }
-  return "";
-}
-
-function getFileMakerErrorMessage(data: unknown) {
-  const messages = (data as { messages?: { code: string; message: string }[] } | null)?.messages;
-  if (!messages?.length) return "";
-  return messages.map((m) => `${m.code}: ${m.message}`).join(" · ");
-}
-
-function crearWhatsAppUrl(movil: string, texto: string) {
-  return `https://wa.me/${normalizarMovil(movil)}?text=${encodeURIComponent(texto)}`;
-}
-
-function normalizarMovil(movil: string) {
-  const limpio = movil.replace(/[^0-9+]/g, "");
-  if (!limpio) return "";
-  if (limpio.startsWith("+")) return limpio.slice(1);
-  if (limpio.startsWith("00")) return limpio.slice(2);
-  if (limpio.length === 9) return `34${limpio}`;
-  return limpio;
-}
-
-function debug(message: string, data?: unknown) {
-  if (!DEBUG_FM) return;
-  console.log(`[FileMaker] ${message}`, data ?? "");
-}
-
-function wait(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+export function abrirWhatsApp(result: EnviarEnlaceResult) { const url = result.url ?? (result.movil && result.texto ? crearWhatsAppUrl(result.movil, result.texto) : undefined); if (!url) return false; window.location.href = url; return true; }
+function getFirstValue(fieldData: Record<string, string>, keys: string[]) { for (const key of keys) { const value = fieldData[key]; if (value) return value; } return ""; }
+function getFileMakerErrorMessage(data: unknown) { const messages = (data as { messages?: { code: string; message: string }[] } | null)?.messages; return messages?.length ? messages.map((m) => `${m.code}: ${m.message}`).join(" · ") : ""; }
+function crearWhatsAppUrl(movil: string, texto: string) { return `https://wa.me/${normalizarMovil(movil)}?text=${encodeURIComponent(texto)}`; }
+function normalizarMovil(movil: string) { const limpio = movil.replace(/[^0-9+]/g, ""); if (!limpio) return ""; if (limpio.startsWith("+")) return limpio.slice(1); if (limpio.startsWith("00")) return limpio.slice(2); if (limpio.length === 9) return `34${limpio}`; return limpio; }
+function debug(message: string, data?: unknown) { if (!DEBUG_FM) return; console.log(`[FileMaker] ${message}`, data ?? ""); }
+function wait(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
