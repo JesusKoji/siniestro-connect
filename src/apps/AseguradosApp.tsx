@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { AseguradoCard } from "@/components/AseguradoCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,7 +165,7 @@ export const AseguradosApp = () => {
               ))}
             </div>
 
-            <RelatedSection title="Contactos relacionados" icon={UserRound} loading={loadingRelaciones} empty="Sin contactos relacionados">
+            <RelatedSection title="Contactos relacionados" icon={UserRound} loading={loadingRelaciones} empty="Sin contactos relacionados" isEmpty={contactos.length === 0}>
               <div className="grid gap-3 xl:grid-cols-2">
                 {contactos.map((c) => (
                   <div key={c.id} className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -181,7 +181,7 @@ export const AseguradosApp = () => {
               </div>
             </RelatedSection>
 
-            <RelatedSection title="Pólizas relacionadas" icon={ShieldCheck} loading={loadingRelaciones} empty="Sin pólizas relacionadas">
+            <RelatedSection title="Pólizas relacionadas" icon={ShieldCheck} loading={loadingRelaciones} empty="Sin pólizas relacionadas" isEmpty={polizas.length === 0}>
               <div className="space-y-3">
                 {polizas.map((p) => (
                   <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -197,7 +197,7 @@ export const AseguradosApp = () => {
               </div>
             </RelatedSection>
 
-            <RelatedSection title="Siniestros relacionados" icon={FileText} loading={loadingRelaciones} empty="Sin siniestros relacionados">
+            <RelatedSection title="Siniestros relacionados" icon={FileText} loading={loadingRelaciones} empty="Sin siniestros relacionados" isEmpty={siniestros.length === 0}>
               <div className="space-y-3">
                 {siniestros.map((s) => (
                   <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -232,10 +232,11 @@ type RelatedSectionProps = {
   icon: typeof UserRound;
   loading: boolean;
   empty: string;
-  children: React.ReactNode;
+  isEmpty: boolean;
+  children: ReactNode;
 };
 
-const RelatedSection = ({ title, icon: Icon, loading, empty, children }: RelatedSectionProps) => (
+const RelatedSection = ({ title, icon: Icon, loading, empty, isEmpty, children }: RelatedSectionProps) => (
   <section className="rounded-3xl border border-border/60 bg-card p-5">
     <div className="mb-4 flex items-center gap-3">
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
@@ -250,7 +251,7 @@ const RelatedSection = ({ title, icon: Icon, loading, empty, children }: Related
         <Loader2 className="h-4 w-4 animate-spin" />
         Cargando...
       </div>
-    ) : React.Children.count(children) === 0 ? (
+    ) : isEmpty ? (
       <p className="text-sm text-muted-foreground">{empty}</p>
     ) : (
       children
