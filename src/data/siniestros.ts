@@ -26,6 +26,10 @@ export interface Asegurado {
   via: string;
   direccion: string;
   numeroCalle: string;
+  bloque: string;
+  escalera: string;
+  planta: string;
+  puerta: string;
   codigoPostal: string;
   poblacion: string;
   provincia: string;
@@ -74,11 +78,15 @@ export const aseguradoMock: Asegurado = {
   via: "C/",
   direccion: "Mayor",
   numeroCalle: "23",
+  bloque: "",
+  escalera: "",
+  planta: "4",
+  puerta: "B",
   codigoPostal: "28013",
   poblacion: "Madrid",
   provincia: "Madrid",
   pais: "España",
-  direccionCompleta: "C/ Mayor 23 · 28013 Madrid",
+  direccionCompleta: "C/ Mayor 23 · 4 B · 28013 Madrid",
   email: "antonio@example.com",
   telefono: "600000000",
 };
