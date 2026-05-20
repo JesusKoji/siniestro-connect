@@ -7,11 +7,61 @@ export interface Siniestro {
   direccion: string;
   fechaApertura: string;
   tipo: string;
+  idSiniestro?: string;
+  idAsegurado?: string;
+  idPoliza?: string;
 }
+
+export interface Asegurado {
+  id: string;
+  nif: string;
+  tipoPersona: string;
+  nombre: string;
+  apellido1: string;
+  apellido2: string;
+  nombreCompleto: string;
+  razonSocial: string;
+  displayName: string;
+  via: string;
+  direccion: string;
+  numeroCalle: string;
+  codigoPostal: string;
+  poblacion: string;
+  provincia: string;
+  pais: string;
+  direccionCompleta: string;
+  email: string;
+  telefono: string;
+}
+
+export const aseguradoMock: Asegurado = {
+  id: "ASEG-1",
+  nif: "12345678Z",
+  tipoPersona: "Persona física",
+  nombre: "Antonio",
+  apellido1: "García",
+  apellido2: "López",
+  nombreCompleto: "Antonio García López",
+  razonSocial: "",
+  displayName: "Antonio García López",
+  via: "C/",
+  direccion: "Mayor",
+  numeroCalle: "23",
+  codigoPostal: "28013",
+  poblacion: "Madrid",
+  provincia: "Madrid",
+  pais: "España",
+  direccionCompleta: "C/ Mayor 23 · 28013 Madrid",
+  email: "antonio@example.com",
+  telefono: "600000000",
+};
 
 export const siniestrosMock: Siniestro[] = [
   {
     id: "1",
+    idSiniestro: "SIN-1",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-1",
     numero: "2025/00142",
     compania: "Mapfre",
     asegurado: "García López, Antonio",
@@ -21,6 +71,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "2",
+    idSiniestro: "SIN-2",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-2",
     numero: "2025/00138",
     compania: "Allianz",
     asegurado: "Martínez Ruiz, Carmen",
@@ -30,6 +83,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "3",
+    idSiniestro: "SIN-3",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-3",
     numero: "2025/00135",
     compania: "Generali",
     asegurado: "Fernández Pérez, Javier",
@@ -39,6 +95,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "4",
+    idSiniestro: "SIN-4",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-4",
     numero: "2025/00131",
     compania: "AXA",
     asegurado: "Sánchez Moreno, Laura",
@@ -48,6 +107,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "5",
+    idSiniestro: "SIN-5",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-5",
     numero: "2025/00128",
     compania: "Mutua Madrileña",
     asegurado: "Rodríguez Gil, Manuel",
@@ -57,6 +119,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "6",
+    idSiniestro: "SIN-6",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-6",
     numero: "2025/00124",
     compania: "Reale Seguros",
     asegurado: "López Vega, Isabel",
@@ -66,6 +131,9 @@ export const siniestrosMock: Siniestro[] = [
   },
   {
     id: "7",
+    idSiniestro: "SIN-7",
+    idAsegurado: "ASEG-1",
+    idPoliza: "POL-7",
     numero: "2025/00120",
     compania: "Mapfre",
     asegurado: "Jiménez Castro, Pedro",
