@@ -79,10 +79,10 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
           <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground">Dirección normalizada</p>
             <p className="mt-1 font-semibold leading-snug">
-              {asegurado.direccionCompleta || direccionNormalizada || "-"}
+              {direccionNormalizada || asegurado.direccionCompleta || "-"}
             </p>
-            {direccionNormalizada && asegurado.direccionCompleta !== direccionNormalizada ? (
-              <p className="mt-1 text-xs text-muted-foreground">{direccionNormalizada}</p>
+            {asegurado.direccionCompleta && direccionNormalizada && asegurado.direccionCompleta !== direccionNormalizada ? (
+              <p className="mt-1 text-xs text-muted-foreground">Original: {asegurado.direccionCompleta}</p>
             ) : null}
           </div>
         </div>
