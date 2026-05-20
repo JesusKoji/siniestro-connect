@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Asegurado, ContactoAsegurado, Poliza, Siniestro } from "@/data/siniestros";
-import { normalizarDireccion } from "@/lib/geocode";
+import { DireccionNormalizada, normalizarDireccion } from "@/lib/geocode";
 import {
   actualizarAsegurado,
   buscarAsegurados,
@@ -265,13 +265,7 @@ export const AseguradosApp = () => {
         )}
       </section>
 
-      {confirmarBorrado && seleccionado ? (
-        <ConfirmDeleteDialog
-          asegurado={seleccionado}
-          onCancel={() => setConfirmarBorrado(false)}
-          onConfirm={confirmarBorradoAsegurado}
-        />
-      ) : null}
+      {confirmarBorrado && seleccionado ? <ConfirmDeleteDialog asegurado={seleccionado} onCancel={() => setConfirmarBorrado(false)} onConfirm={confirmarBorradoAsegurado} /> : null}
     </main>
   );
 };
@@ -282,31 +276,45 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
   const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur");
   const [direccionLibre, setDireccionLibre] = useState(buildDireccionLibre(asegurado));
   const [normalizando, setNormalizando] = useState(false);
+  const [candidatos, setCandidatos] = useState<DireccionNormalizada[]>([]);
 
   useEffect(() => {
     setDireccionLibre(buildDireccionLibre(asegurado));
+    setCandidatos([]);
   }, [asegurado.id, asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]);
+
+  const aplicarCandidato = (data: DireccionNormalizada) => {
+    onApplyNormalizedAddress({
+      via: data.via,
+      direccion: data.direccion,
+      numeroCalle: data.numeroCalle,
+      bloque: data.bloque,
+      escalera: data.escalera,
+      planta: data.planta,
+      puerta: data.puerta,
+      codigoPostal: data.codigoPostal,
+      poblacion: data.poblacion,
+      provincia: data.provincia,
+      pais: data.pais,
+      direccionCompleta: data.direccionCompleta,
+    });
+    setDireccionLibre(data.direccionCompleta || data.googleFormattedAddress || buildDireccionLibre({ ...asegurado, ...data }));
+    toast.success("Dirección aplicada");
+  };
 
   const ejecutarNormalizacion = async () => {
     setNormalizando(true);
     try {
       const data = await normalizarDireccion(direccionLibre);
-      onApplyNormalizedAddress({
-        via: data.via,
-        direccion: data.direccion,
-        numeroCalle: data.numeroCalle,
-        bloque: data.bloque,
-        escalera: data.escalera,
-        planta: data.planta,
-        puerta: data.puerta,
-        codigoPostal: data.codigoPostal,
-        poblacion: data.poblacion,
-        provincia: data.provincia,
-        pais: data.pais,
-        direccionCompleta: data.direccionCompleta,
-      });
-      toast.success("Dirección normalizada con Google Maps");
+      const lista = data.candidates?.length ? data.candidates : [data];
+      setCandidatos(lista);
+      if (lista.length === 1) {
+        aplicarCandidato(lista[0]);
+      } else {
+        toast.success(`${lista.length} direcciones encontradas. Elige la correcta.`);
+      }
     } catch (error) {
+      setCandidatos([]);
       toast.error(error instanceof Error ? error.message : "No se pudo normalizar la dirección");
     } finally {
       setNormalizando(false);
@@ -330,13 +338,25 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
         <div className="rounded-2xl border border-dashed border-border/80 bg-card p-4">
           <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div>
           <div className="mt-3 flex flex-col gap-2 lg:flex-row">
-            <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Carrer de l'Escriptor Rafael Ferreres 12, Valencia" className="h-11 rounded-xl" />
+            <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Federico García Lorca 87 Valencia" className="h-11 rounded-xl" />
             <Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">
               {normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Normalizar
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">El campo se rellena con la dirección actual. Puedes modificarla antes de normalizar.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Si hay varias coincidencias, selecciona la dirección correcta de la lista.</p>
+          {candidatos.length > 1 ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-semibold">Direcciones encontradas</p>
+              {candidatos.map((c, index) => (
+                <button key={c.placeId || `${c.direccionCompleta}-${index}`} type="button" onClick={() => aplicarCandidato(c)} className="w-full rounded-xl border border-border/60 bg-background p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10">
+                  <p className="text-sm font-semibold">{c.direccionCompleta || c.googleFormattedAddress}</p>
+                  {c.googleFormattedAddress && c.googleFormattedAddress !== c.direccionCompleta ? <p className="mt-1 text-xs text-muted-foreground">{c.googleFormattedAddress}</p> : null}
+                  {c.consultaUsada ? <p className="mt-1 text-[11px] text-muted-foreground">Consulta usada: {c.consultaUsada}</p> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
@@ -366,20 +386,10 @@ const ConfirmDeleteDialog = ({ asegurado, onCancel, onConfirm }: ConfirmDeleteDi
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
     <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card p-6 shadow-strong">
       <div className="flex gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10">
-          <AlertTriangle className="h-6 w-6 text-destructive" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold">Confirmar borrado</h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.
-          </p>
-        </div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10"><AlertTriangle className="h-6 w-6 text-destructive" /></div>
+        <div><h2 className="text-xl font-bold">Confirmar borrado</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.</p></div>
       </div>
-      <div className="mt-6 flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
-        <Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button>
-      </div>
+      <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button><Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button></div>
     </div>
   </div>
 );
