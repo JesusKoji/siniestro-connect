@@ -16,6 +16,8 @@ export const FM_CONFIG = {
 };
 
 const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? "true") !== "false";
+const DEBUG_FM = (import.meta.env.VITE_DEBUG_FM ?? "false") === "true";
+const FALLBACK_LISTAR_REGISTROS = (import.meta.env.VITE_FM_FALLBACK_LISTAR_REGISTROS ?? "true") !== "false";
 
 let token: string | null = null;
 
@@ -26,6 +28,11 @@ export interface EnviarEnlaceResult {
   movil?: string;
   raw?: unknown;
 }
+
+type FileMakerRecord = {
+  recordId: string;
+  fieldData: Record<string, string>;
+};
 
 async function login(usuario: string, password: string): Promise<string> {
   if (USE_MOCK) {
@@ -67,6 +74,42 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
     return siniestrosMock;
   }
 
+  const registrosFiltrados = await buscarRegistrosEnCurso();
+
+  if (registrosFiltrados.length > 0) {
+    return registrosFiltrados.map(mapearSiniestro);
+  }
+
+  if (!FALLBACK_LISTAR_REGISTROS) {
+    return [];
+  }
+
+  debug("La búsqueda por FechaCierre no devolvió registros. Probando lectura de registros y filtro en cliente.");
+  const registros = await listarRegistrosLayout();
+  const campoFiltro = FM_CONFIG.filtroEnCursoCampo;
+  const filtradosEnCliente = registros.filter((record) => {
+    const valor = record.fieldData[campoFiltro];
+    return valor === undefined || valor === null || String(valor).trim() === "";
+  });
+
+  debug("Fallback registros", {
+    total: registros.length,
+    filtrados: filtradosEnCliente.length,
+    campoFiltro,
+    ejemploCampos: registros[0]?.fieldData ? Object.keys(registros[0].fieldData) : [],
+  });
+
+  return filtradosEnCliente.map(mapearSiniestro);
+}
+
+async function buscarRegistrosEnCurso(): Promise<FileMakerRecord[]> {
+  const body = {
+    query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }],
+    limit: "200",
+  };
+
+  debug("Find siniestros", { layout: FM_CONFIG.layout, body });
+
   const res = await fetch(
     `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/_find`,
     {
@@ -75,32 +118,62 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }],
-        limit: "200",
-      }),
+      body: JSON.stringify(body),
     }
   );
 
-  if (!res.ok) throw new Error("No se pudieron cargar los siniestros");
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
+  debug("Find siniestros response", data);
 
-  return data.response.data.map((record: { recordId: string; fieldData: Record<string, string> }) => {
-    const fieldData = record.fieldData;
-    return {
-      id: record.recordId,
-      numero: fieldData.NumeroSiniestro ?? "",
-      compania: getFirstValue(fieldData, [
-        "siniestros_polizas_COMPANIAS::Alias",
-        "siniestros_polizas_COMPANIAS:Alias",
-        "Alias",
-      ]),
-      asegurado: fieldData.Asegurado ?? "",
-      direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? "",
-      fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo"]) || new Date().toISOString(),
-      tipo: fieldData.TipoSiniestro ?? "",
-    };
-  });
+  if (!res.ok) {
+    throw new Error(getFileMakerErrorMessage(data) || "No se pudieron cargar los siniestros");
+  }
+
+  const code = data?.messages?.[0]?.code;
+  if (code === "401") {
+    return [];
+  }
+
+  return data?.response?.data ?? [];
+}
+
+async function listarRegistrosLayout(): Promise<FileMakerRecord[]> {
+  const res = await fetch(
+    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/records?_limit=200`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await res.json().catch(() => null);
+  debug("List records response", data);
+
+  if (!res.ok) {
+    throw new Error(getFileMakerErrorMessage(data) || "No se pudieron listar registros del layout");
+  }
+
+  return data?.response?.data ?? [];
+}
+
+function mapearSiniestro(record: FileMakerRecord): Siniestro {
+  const fieldData = record.fieldData;
+  return {
+    id: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]) || record.recordId,
+    numero: fieldData.NumeroSiniestro ?? "",
+    compania: getFirstValue(fieldData, [
+      "siniestros_polizas_COMPANIAS::Alias",
+      "siniestros_polizas_COMPANIAS:Alias",
+      "Alias",
+    ]),
+    asegurado: fieldData.Asegurado ?? getFirstValue(fieldData, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
+    direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
+    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo"]) || new Date().toISOString(),
+    tipo: fieldData.TipoSiniestro ?? "",
+  };
 }
 
 export async function ejecutarScriptEnviarEnlace(
@@ -176,6 +249,12 @@ function getFirstValue(fieldData: Record<string, string>, keys: string[]) {
   return "";
 }
 
+function getFileMakerErrorMessage(data: unknown) {
+  const messages = (data as { messages?: { code: string; message: string }[] } | null)?.messages;
+  if (!messages?.length) return "";
+  return messages.map((m) => `${m.code}: ${m.message}`).join(" · ");
+}
+
 function crearWhatsAppUrl(movil: string, texto: string) {
   return `https://wa.me/${normalizarMovil(movil)}?text=${encodeURIComponent(texto)}`;
 }
@@ -187,6 +266,11 @@ function normalizarMovil(movil: string) {
   if (limpio.startsWith("00")) return limpio.slice(2);
   if (limpio.length === 9) return `34${limpio}`;
   return limpio;
+}
+
+function debug(message: string, data?: unknown) {
+  if (!DEBUG_FM) return;
+  console.log(`[FileMaker] ${message}`, data ?? "");
 }
 
 function wait(ms: number) {
