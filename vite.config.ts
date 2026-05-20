@@ -20,6 +20,12 @@ type GeocodeResult = {
   };
 };
 
+type GoogleGeocodeResponse = {
+  status?: string;
+  error_message?: string;
+  results?: GeocodeResult[];
+};
+
 function geocodePlugin(apiKey?: string): Plugin {
   return {
     name: "local-geocode-api",
@@ -43,26 +49,19 @@ function geocodePlugin(apiKey?: string): Plugin {
             return;
           }
 
-          const googleUrl = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-          googleUrl.searchParams.set("address", q);
-          googleUrl.searchParams.set("region", "es");
-          googleUrl.searchParams.set("language", "es");
-          googleUrl.searchParams.set("key", apiKey);
+          const geocodeResult = await geocodeWithRetries(q, apiKey);
 
-          const googleRes = await fetch(googleUrl);
-          const googleData = await googleRes.json();
-
-          if (!googleRes.ok || googleData.status !== "OK" || !googleData.results?.[0]) {
+          if (!geocodeResult.result) {
             res.statusCode = 502;
             res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ error: googleData.error_message || `Google Maps no devolvió resultados: ${googleData.status || "sin estado"}` }));
+            res.end(JSON.stringify({ error: geocodeResult.error || "Google Maps no devolvió resultados" }));
             return;
           }
 
-          const normalized = normalizeGoogleResult(googleData.results[0]);
+          const normalized = normalizeGoogleResult(geocodeResult.result);
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(normalized));
+          res.end(JSON.stringify({ ...normalized, consultaUsada: geocodeResult.query }));
         } catch (error) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json");
@@ -71,6 +70,59 @@ function geocodePlugin(apiKey?: string): Plugin {
       });
     },
   };
+}
+
+async function geocodeWithRetries(q: string, apiKey: string): Promise<{ result?: GeocodeResult; query?: string; error?: string }> {
+  const variants = buildQueryVariants(q);
+  let lastError = "";
+
+  for (const query of variants) {
+    const googleUrl = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+    googleUrl.searchParams.set("address", query);
+    googleUrl.searchParams.set("components", "country:ES");
+    googleUrl.searchParams.set("region", "es");
+    googleUrl.searchParams.set("language", "es");
+    googleUrl.searchParams.set("key", apiKey);
+
+    const googleRes = await fetch(googleUrl);
+    const googleData = (await googleRes.json()) as GoogleGeocodeResponse;
+
+    if (googleRes.ok && googleData.status === "OK" && googleData.results?.[0]) {
+      return { result: googleData.results[0], query };
+    }
+
+    lastError = googleData.error_message || `Google Maps no devolvió resultados: ${googleData.status || "sin estado"}`;
+  }
+
+  return { error: lastError };
+}
+
+function buildQueryVariants(q: string) {
+  const clean = q.trim().replace(/\s+/g, " ");
+  const lower = clean.toLowerCase();
+  const hasKnownType = /^(carrer|calle|avenida|avinguda|av\.?|passeig|paseo|plaza|plaça|camino|camí|carretera|ronda|travesía|travessera)\b/.test(lower);
+  const hasValencia = /\b(valencia|valència)\b/.test(lower);
+  const suffix = hasValencia ? "" : ", Valencia";
+
+  if (hasKnownType) {
+    return unique([clean, `${clean}${suffix}`, `${clean}, España`]);
+  }
+
+  return unique([
+    clean,
+    `${clean}${suffix}`,
+    `Avenida del Poeta ${clean}${suffix}`,
+    `Avinguda del Poeta ${clean}${suffix}`,
+    `Avenida ${clean}${suffix}`,
+    `Avinguda ${clean}${suffix}`,
+    `Calle ${clean}${suffix}`,
+    `Carrer ${clean}${suffix}`,
+    `${clean}, España`,
+  ]);
+}
+
+function unique(values: string[]) {
+  return Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
 }
 
 function normalizeGoogleResult(result: GeocodeResult) {
@@ -101,7 +153,8 @@ function normalizeGoogleResult(result: GeocodeResult) {
     poblacion,
     provincia,
     pais,
-    direccionCompleta: result.formatted_address || "",
+    direccionCompleta: buildNormalizedAddress({ via, direccion, numeroCalle, codigoPostal, poblacion, provincia, pais }),
+    googleFormattedAddress: result.formatted_address || "",
     latitud: location.lat !== undefined ? String(location.lat) : "",
     longitud: location.lng !== undefined ? String(location.lng) : "",
   };
@@ -111,47 +164,72 @@ function splitSpanishRoute(route: string) {
   const clean = route.trim();
   const lower = clean.toLowerCase();
   const prefixes = [
-    ["carrer de", "Carrer"],
-    ["carrer del", "Carrer"],
-    ["carrer dels", "Carrer"],
-    ["carrer d'", "Carrer"],
-    ["carrer", "Carrer"],
-    ["calle de", "Calle"],
-    ["calle del", "Calle"],
-    ["calle", "Calle"],
-    ["avinguda de", "Avinguda"],
-    ["avinguda", "Avinguda"],
-    ["avenida de", "Avenida"],
-    ["avenida", "Avenida"],
-    ["av.", "Av."],
-    ["plaza de", "Plaza"],
-    ["plaza", "Plaza"],
-    ["plaça de", "Plaça"],
-    ["plaça", "Plaça"],
-    ["camino de", "Camino"],
-    ["camino", "Camino"],
-    ["camí de", "Camí"],
-    ["camí", "Camí"],
-    ["carretera de", "Carretera"],
-    ["carretera", "Carretera"],
-    ["paseo de", "Paseo"],
-    ["paseo", "Paseo"],
-    ["passeig de", "Passeig"],
-    ["passeig", "Passeig"],
-    ["ronda de", "Ronda"],
-    ["ronda", "Ronda"],
-    ["travesía de", "Travesía"],
-    ["travesía", "Travesía"],
-    ["travessera de", "Travessera"],
-    ["travessera", "Travessera"],
+    ["carrer dels", "Carrer", "dels"],
+    ["carrer del", "Carrer", "del"],
+    ["carrer de", "Carrer", "de"],
+    ["carrer d'", "Carrer", "d'"],
+    ["carrer", "Carrer", ""],
+    ["calle del", "Calle", "del"],
+    ["calle de", "Calle", "de"],
+    ["calle", "Calle", ""],
+    ["avinguda del", "Avinguda", "del"],
+    ["avinguda de", "Avinguda", "de"],
+    ["avinguda", "Avinguda", ""],
+    ["avenida del", "Avenida", "del"],
+    ["avenida de", "Avenida", "de"],
+    ["avenida", "Avenida", ""],
+    ["av.", "Av.", ""],
+    ["passeig del", "Passeig", "del"],
+    ["passeig de", "Passeig", "de"],
+    ["passeig", "Passeig", ""],
+    ["paseo del", "Paseo", "del"],
+    ["paseo de", "Paseo", "de"],
+    ["paseo", "Paseo", ""],
+    ["plaza de", "Plaza", "de"],
+    ["plaza", "Plaza", ""],
+    ["plaça de", "Plaça", "de"],
+    ["plaça", "Plaça", ""],
+    ["camino de", "Camino", "de"],
+    ["camino", "Camino", ""],
+    ["camí de", "Camí", "de"],
+    ["camí", "Camí", ""],
+    ["carretera de", "Carretera", "de"],
+    ["carretera", "Carretera", ""],
+    ["ronda de", "Ronda", "de"],
+    ["ronda", "Ronda", ""],
+    ["travesía de", "Travesía", "de"],
+    ["travesía", "Travesía", ""],
+    ["travessera de", "Travessera", "de"],
+    ["travessera", "Travessera", ""],
   ];
 
-  for (const [prefix, label] of prefixes) {
+  for (const [prefix, label, article] of prefixes) {
     if (lower === prefix) return { via: label, direccion: "" };
-    if (lower.startsWith(`${prefix} `)) return { via: label, direccion: clean.slice(prefix.length).trim() };
+    if (lower.startsWith(`${prefix} `)) {
+      const rest = clean.slice(prefix.length).trim();
+      const direccion = article ? `${article} ${rest}`.trim() : rest;
+      return { via: label, direccion };
+    }
   }
 
   return { via: "", direccion: clean };
+}
+
+function buildNormalizedAddress(parts: {
+  via: string;
+  direccion: string;
+  numeroCalle: string;
+  codigoPostal: string;
+  poblacion: string;
+  provincia: string;
+  pais: string;
+}) {
+  return [
+    [parts.via, parts.direccion, parts.numeroCalle].filter(Boolean).join(" "),
+    [parts.codigoPostal, parts.poblacion].filter(Boolean).join(" "),
+    parts.provincia,
+    parts.pais,
+  ].filter(Boolean).join(" · ");
 }
 
 export default defineConfig(({ mode }) => {
