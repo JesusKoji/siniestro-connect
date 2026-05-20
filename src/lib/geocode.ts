@@ -2,7 +2,18 @@ import { Asegurado } from "@/data/siniestros";
 
 export type DireccionNormalizada = Pick<
   Asegurado,
-  "via" | "direccion" | "numeroCalle" | "codigoPostal" | "poblacion" | "provincia" | "pais" | "direccionCompleta"
+  | "via"
+  | "direccion"
+  | "numeroCalle"
+  | "bloque"
+  | "escalera"
+  | "planta"
+  | "puerta"
+  | "codigoPostal"
+  | "poblacion"
+  | "provincia"
+  | "pais"
+  | "direccionCompleta"
 > & {
   latitud?: string;
   longitud?: string;
