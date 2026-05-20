@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Asegurado } from "@/data/siniestros";
 import { Badge } from "@/components/ui/badge";
-import { Building2, IdCard, Mail, MapPin, Phone, UserRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Building2, ExternalLink, IdCard, Mail, MapPin, Phone, UserRound, X } from "lucide-react";
 
 type AseguradoCardProps = {
   asegurado: Asegurado | null;
@@ -8,6 +10,8 @@ type AseguradoCardProps = {
 };
 
 export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps) => {
+  const [mapaAbierto, setMapaAbierto] = useState(false);
+
   if (loading) {
     return (
       <section className="rounded-3xl border border-border/60 bg-background/70 p-5">
@@ -27,20 +31,14 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
     );
   }
 
-  const direccionNormalizada = [
-    [asegurado.via, asegurado.direccion, asegurado.numeroCalle].filter(Boolean).join(" "),
-    [
-      asegurado.bloque ? `Bloque ${asegurado.bloque}` : "",
-      asegurado.escalera ? `Esc. ${asegurado.escalera}` : "",
-      asegurado.planta ? `Planta ${asegurado.planta}` : "",
-      asegurado.puerta ? `Puerta ${asegurado.puerta}` : "",
-    ].filter(Boolean).join(" "),
-    [asegurado.codigoPostal, asegurado.poblacion].filter(Boolean).join(" "),
-    asegurado.provincia,
-    asegurado.pais,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const direccionNormalizada = buildDireccionNormalizada(asegurado);
+  const direccionMapa = direccionNormalizada || asegurado.direccionCompleta || "";
+  const mapEmbedUrl = direccionMapa
+    ? `https://www.google.com/maps?q=${encodeURIComponent(direccionMapa)}&output=embed`
+    : "";
+  const mapOpenUrl = direccionMapa
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionMapa)}`
+    : "";
 
   const esEmpresa = Boolean(asegurado.razonSocial);
 
@@ -58,10 +56,6 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
             {asegurado.displayName || "Sin nombre"}
           </p>
         </div>
-        <div className="rounded-2xl border border-border/60 bg-card px-4 py-3">
-          <p className="text-xs font-medium text-muted-foreground">CIF / NIF</p>
-          <p className="mt-1 font-semibold">{asegurado.nif || "-"}</p>
-        </div>
       </div>
 
       <div className="mt-5 grid gap-3 xl:grid-cols-2">
@@ -71,7 +65,12 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
         <InfoRow icon={Mail} label="Email" value={asegurado.email} />
       </div>
 
-      <div className="mt-4 rounded-2xl border border-border/60 bg-card p-4">
+      <button
+        type="button"
+        onClick={() => direccionMapa && setMapaAbierto(true)}
+        disabled={!direccionMapa}
+        className="mt-4 w-full rounded-2xl border border-border/60 bg-card p-4 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10 disabled:cursor-not-allowed disabled:hover:border-border/60 disabled:hover:bg-card"
+      >
         <div className="flex gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
             <MapPin className="h-5 w-5 text-muted-foreground" />
@@ -79,17 +78,87 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
           <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground">Dirección normalizada</p>
             <p className="mt-1 font-semibold leading-snug">
-              {direccionNormalizada || asegurado.direccionCompleta || "-"}
+              {direccionMapa || "-"}
             </p>
             {asegurado.direccionCompleta && direccionNormalizada && asegurado.direccionCompleta !== direccionNormalizada ? (
               <p className="mt-1 text-xs text-muted-foreground">Original: {asegurado.direccionCompleta}</p>
             ) : null}
+            {direccionMapa ? <p className="mt-2 text-xs font-medium text-accent">Ver en Google Maps</p> : null}
           </div>
         </div>
-      </div>
+      </button>
+
+      {mapaAbierto ? (
+        <MapDialog
+          title={asegurado.displayName || "Asegurado"}
+          address={direccionMapa}
+          embedUrl={mapEmbedUrl}
+          openUrl={mapOpenUrl}
+          onClose={() => setMapaAbierto(false)}
+        />
+      ) : null}
     </section>
   );
 };
+
+function buildDireccionNormalizada(asegurado: Asegurado) {
+  return [
+    [asegurado.via, asegurado.direccion, asegurado.numeroCalle].filter(Boolean).join(" "),
+    [
+      asegurado.bloque ? `Bloque ${asegurado.bloque}` : "",
+      asegurado.escalera ? `Esc. ${asegurado.escalera}` : "",
+      asegurado.planta ? `Planta ${asegurado.planta}` : "",
+      asegurado.puerta ? `Puerta ${asegurado.puerta}` : "",
+    ].filter(Boolean).join(" "),
+    [asegurado.codigoPostal, asegurado.poblacion].filter(Boolean).join(" "),
+    asegurado.provincia,
+    asegurado.pais,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+type MapDialogProps = {
+  title: string;
+  address: string;
+  embedUrl: string;
+  openUrl: string;
+  onClose: () => void;
+};
+
+const MapDialog = ({ title, address, embedUrl, openUrl, onClose }: MapDialogProps) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+    <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-card shadow-strong">
+      <div className="flex items-start justify-between gap-4 border-b border-border/60 p-5">
+        <div>
+          <h2 className="text-xl font-bold">Ubicación del asegurado</h2>
+          <p className="mt-1 text-sm font-medium">{title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{address}</p>
+        </div>
+        <Button type="button" variant="ghost" onClick={onClose} className="rounded-xl">
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+      <div className="h-[68vh] min-h-[420px] bg-muted">
+        <iframe
+          title={`Mapa de ${address}`}
+          src={embedUrl}
+          className="h-full w-full border-0"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+        />
+      </div>
+      <div className="flex flex-col gap-2 border-t border-border/60 p-4 md:flex-row md:items-center md:justify-between">
+        <p className="text-xs text-muted-foreground">La chincheta se genera con la búsqueda de Google Maps sobre la dirección normalizada.</p>
+        <a href={openUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-xl border border-border/60 px-4 py-2 text-sm font-medium transition-smooth hover:bg-accent/10">
+          Abrir en Google Maps
+          <ExternalLink className="ml-2 h-4 w-4" />
+        </a>
+      </div>
+    </div>
+  </div>
+);
 
 type InfoRowProps = {
   icon: typeof UserRound;
