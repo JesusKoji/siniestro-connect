@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { AseguradoCard } from "@/components/AseguradoCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,42 +11,45 @@ import {
 } from "@/lib/filemaker";
 import {
   Building2,
+  Edit3,
   FileText,
   Loader2,
   Mail,
   Phone,
+  Plus,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 
+type ModoFormulario = "vista" | "nuevo" | "edicion";
+
 export const AseguradosApp = () => {
-  const [asegurados, setAsegurados] = useState<Asegurado[]>([]);
+  const [resultados, setResultados] = useState<Asegurado[]>([]);
+  const [mostrarResultados, setMostrarResultados] = useState(false);
   const [seleccionado, setSeleccionado] = useState<Asegurado | null>(null);
   const [contactos, setContactos] = useState<ContactoAsegurado[]>([]);
   const [polizas, setPolizas] = useState<Poliza[]>([]);
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [query, setQuery] = useState("");
-  const [loadingLista, setLoadingLista] = useState(false);
+  const [modo, setModo] = useState<ModoFormulario>("vista");
+  const [loadingBusqueda, setLoadingBusqueda] = useState(false);
   const [loadingRelaciones, setLoadingRelaciones] = useState(false);
 
-  useEffect(() => {
-    cargarAsegurados("");
-  }, []);
-
-  useEffect(() => {
+  const cargarRelaciones = (asegurado: Asegurado) => {
     setContactos([]);
     setPolizas([]);
     setSiniestros([]);
 
-    if (!seleccionado?.id) return;
+    if (!asegurado.id) return;
 
     setLoadingRelaciones(true);
     Promise.all([
-      obtenerContactosAsegurado(seleccionado.id),
-      obtenerPolizasAsegurado(seleccionado.id),
-      obtenerSiniestrosAsegurado(seleccionado.id),
+      obtenerContactosAsegurado(asegurado.id),
+      obtenerPolizasAsegurado(asegurado.id),
+      obtenerSiniestrosAsegurado(asegurado.id),
     ])
       .then(([contactosData, polizasData, siniestrosData]) => {
         setContactos(contactosData);
@@ -58,25 +61,61 @@ export const AseguradosApp = () => {
         toast.error(msg);
       })
       .finally(() => setLoadingRelaciones(false));
-  }, [seleccionado]);
+  };
 
-  const cargarAsegurados = (texto: string) => {
-    setLoadingLista(true);
-    buscarAsegurados(texto)
+  const buscar = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!query.trim()) {
+      toast.error("Introduce un NIF, nombre, razón social o dirección para buscar");
+      return;
+    }
+
+    setLoadingBusqueda(true);
+    buscarAsegurados(query)
       .then((data) => {
-        setAsegurados(data);
-        setSeleccionado((actual) => actual ?? data[0] ?? null);
+        setResultados(data);
+        setMostrarResultados(true);
+        if (data.length === 1) {
+          seleccionarAsegurado(data[0]);
+        } else if (data.length === 0) {
+          toast.error("No se han encontrado asegurados");
+        }
       })
       .catch((error) => {
         const msg = error instanceof Error ? error.message : "No se pudieron cargar los asegurados";
         toast.error(msg);
       })
-      .finally(() => setLoadingLista(false));
+      .finally(() => setLoadingBusqueda(false));
   };
 
-  const buscar = (event: React.FormEvent) => {
-    event.preventDefault();
-    cargarAsegurados(query);
+  const seleccionarAsegurado = (asegurado: Asegurado) => {
+    setSeleccionado(asegurado);
+    setModo("vista");
+    setMostrarResultados(false);
+    cargarRelaciones(asegurado);
+  };
+
+  const nuevoAsegurado = () => {
+    setSeleccionado(null);
+    setContactos([]);
+    setPolizas([]);
+    setSiniestros([]);
+    setResultados([]);
+    setMostrarResultados(false);
+    setModo("nuevo");
+    toast.info("Formulario de alta preparado. En el siguiente paso conectaremos el guardado con FileMaker.");
+  };
+
+  const editarAsegurado = () => {
+    if (!seleccionado) return;
+    setModo("edicion");
+    toast.info("Edición preparada. En el siguiente paso conectaremos la actualización con FileMaker.");
+  };
+
+  const borrarAsegurado = () => {
+    if (!seleccionado) return;
+    toast.error("Borrado pendiente de conectar con FileMaker. Antes añadiremos confirmación y validaciones por relaciones existentes.");
   };
 
   const resumen = useMemo(
@@ -89,70 +128,88 @@ export const AseguradosApp = () => {
   );
 
   return (
-    <main className="mx-auto grid max-w-7xl gap-6 px-8 py-8 lg:grid-cols-[380px_1fr]">
-      <section className="rounded-3xl border border-border/60 bg-card shadow-soft">
-        <div className="border-b border-border/60 p-5">
-          <h1 className="text-2xl font-bold">Asegurados</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {loadingLista ? "Buscando asegurados..." : `${asegurados.length} registros`}
-          </p>
-          <form onSubmit={buscar} className="relative mt-4 flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por NIF, nombre, razón social..."
-                className="h-12 rounded-2xl border-border/60 bg-background pl-10"
-              />
-            </div>
-            <Button type="submit" className="h-12 rounded-2xl px-5">
-              Buscar
+    <main className="mx-auto max-w-7xl px-8 py-8">
+      <section className="rounded-3xl border border-border/60 bg-card p-5 shadow-soft">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Ficha de asegurado</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Busca un asegurado concreto o crea una nueva ficha.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={nuevoAsegurado} className="rounded-xl">
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo
             </Button>
-          </form>
+            <Button variant="outline" onClick={editarAsegurado} disabled={!seleccionado} className="rounded-xl">
+              <Edit3 className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={borrarAsegurado}
+              disabled={!seleccionado}
+              className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Borrar
+            </Button>
+          </div>
         </div>
 
-        <div className="max-h-[calc(100vh-235px)] overflow-y-auto p-3">
-          {loadingLista ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+        <form onSubmit={buscar} className="mt-5 flex flex-col gap-3 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por NIF, nombre, razón social, población o dirección..."
+              className="h-12 rounded-2xl border-border/60 bg-background pl-10"
+            />
+          </div>
+          <Button type="submit" disabled={loadingBusqueda} className="h-12 rounded-2xl px-6">
+            {loadingBusqueda ? <Loader2 className="h-5 w-5 animate-spin" /> : "Buscar"}
+          </Button>
+        </form>
+
+        {mostrarResultados ? (
+          <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Resultados de búsqueda</p>
+              <p className="text-xs text-muted-foreground">{resultados.length} coincidencias</p>
             </div>
-          ) : asegurados.length === 0 ? (
-            <div className="py-16 text-center text-muted-foreground">
-              <UserRound className="mx-auto mb-3 h-10 w-10 opacity-40" />
-              <p className="text-sm">No se han encontrado asegurados</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {asegurados.map((a) => {
-                const activo = seleccionado?.id === a.id;
-                return (
+            {resultados.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No se han encontrado asegurados.</p>
+            ) : (
+              <div className="grid gap-2 xl:grid-cols-2">
+                {resultados.map((a) => (
                   <button
                     key={a.id}
-                    onClick={() => setSeleccionado(a)}
-                    className={`w-full rounded-2xl border p-4 text-left transition-smooth ${
-                      activo
-                        ? "border-accent/60 bg-accent/10 shadow-sm"
-                        : "border-transparent hover:border-border/70 hover:bg-secondary/60"
-                    }`}
+                    onClick={() => seleccionarAsegurado(a)}
+                    className="rounded-xl border border-border/60 bg-card p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="truncate text-sm font-semibold">{a.displayName || "Sin nombre"}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{a.nif}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{a.nif || "Sin NIF"}</span>
                     </div>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {a.direccionCompleta || [a.direccion, a.poblacion, a.provincia].filter(Boolean).join(" · ")}
                     </p>
                   </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </section>
 
-      <section className="min-h-[640px] rounded-3xl border border-border/60 bg-card shadow-soft">
-        {seleccionado ? (
+      <section className="mt-6 rounded-3xl border border-border/60 bg-card shadow-soft">
+        {modo === "nuevo" ? (
+          <EditorPlaceholder title="Nuevo asegurado" />
+        ) : modo === "edicion" && seleccionado ? (
+          <EditorPlaceholder title="Editar asegurado" asegurado={seleccionado} />
+        ) : seleccionado ? (
           <div className="space-y-4 p-6">
             <AseguradoCard asegurado={seleccionado} />
 
@@ -215,10 +272,10 @@ export const AseguradosApp = () => {
             </RelatedSection>
           </div>
         ) : (
-          <div className="flex h-full min-h-[640px] items-center justify-center p-8 text-center text-muted-foreground">
+          <div className="flex min-h-[520px] items-center justify-center p-8 text-center text-muted-foreground">
             <div>
               <Building2 className="mx-auto mb-4 h-12 w-12 opacity-40" />
-              <p>Selecciona un asegurado para ver su ficha.</p>
+              <p>Busca un asegurado o crea una nueva ficha.</p>
             </div>
           </div>
         )}
@@ -226,6 +283,23 @@ export const AseguradosApp = () => {
     </main>
   );
 };
+
+type EditorPlaceholderProps = {
+  title: string;
+  asegurado?: Asegurado;
+};
+
+const EditorPlaceholder = ({ title, asegurado }: EditorPlaceholderProps) => (
+  <div className="space-y-4 p-6">
+    <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/40 p-6">
+      <h2 className="text-xl font-bold">{title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Este formulario será editable en el siguiente paso. Antes de activar guardar/borrar conviene mapear los campos obligatorios y las validaciones de FileMaker.
+      </p>
+    </div>
+    {asegurado ? <AseguradoCard asegurado={asegurado} /> : null}
+  </div>
+);
 
 type RelatedSectionProps = {
   title: string;
