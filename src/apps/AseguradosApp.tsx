@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { AseguradoCard } from "@/components/AseguradoCard";
+import { ContactosAseguradoManager } from "@/components/ContactosAseguradoManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,9 +20,7 @@ import {
   Edit3,
   FileText,
   Loader2,
-  Mail,
   MapPin,
-  Phone,
   Plus,
   Save,
   Search,
@@ -152,6 +151,10 @@ export const AseguradosApp = () => {
     setFormData((actual) => ({ ...actual, ...data }));
   };
 
+  const recargarContactos = () => {
+    if (seleccionado) cargarRelaciones(seleccionado);
+  };
+
   const guardarAsegurado = async (event: React.FormEvent) => {
     event.preventDefault();
     const esJuridica = formData.tipoPersona.toLowerCase().includes("jur");
@@ -250,9 +253,9 @@ export const AseguradosApp = () => {
             <div className="grid gap-3 md:grid-cols-3">
               {resumen.map((item) => <div key={item.label} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-2xl font-bold">{loadingRelaciones ? "..." : item.value}</p></div>)}
             </div>
-            <RelatedSection title="Contactos relacionados" icon={UserRound} loading={loadingRelaciones} empty="Sin contactos relacionados" isEmpty={contactos.length === 0}>
-              <div className="grid gap-3 xl:grid-cols-2">{contactos.map((c) => <div key={c.id} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="font-semibold">{c.nombreCompleto || c.nombre || "Sin nombre"}</p>{c.cargo ? <p className="text-xs text-muted-foreground">{c.cargo}</p> : null}<div className="mt-3 space-y-1 text-sm text-muted-foreground">{c.movil ? <p className="flex items-center gap-2"><Phone className="h-4 w-4" />{c.movil}</p> : null}{c.telefono ? <p className="flex items-center gap-2"><Phone className="h-4 w-4" />{c.telefono}</p> : null}{c.mail ? <p className="flex items-center gap-2"><Mail className="h-4 w-4" />{c.mail}</p> : null}</div></div>)}</div>
-            </RelatedSection>
+
+            <ContactosAseguradoManager idAsegurado={seleccionado.id} contactos={contactos} loading={loadingRelaciones} onChanged={recargarContactos} />
+
             <RelatedSection title="Pólizas relacionadas" icon={ShieldCheck} loading={loadingRelaciones} empty="Sin pólizas relacionadas" isEmpty={polizas.length === 0}>
               <div className="space-y-3">{polizas.map((p) => <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="font-semibold">{p.numeroPoliza || "Sin número de póliza"}</p><p className="mt-1 text-sm text-muted-foreground">{p.direccionCompleta || [p.poblacion, p.provincia].filter(Boolean).join(" · ")}</p></div>)}</div>
             </RelatedSection>
@@ -284,20 +287,7 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
   }, [asegurado.id, asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]);
 
   const aplicarCandidato = (data: DireccionNormalizada) => {
-    onApplyNormalizedAddress({
-      via: data.via,
-      direccion: data.direccion,
-      numeroCalle: data.numeroCalle,
-      bloque: data.bloque,
-      escalera: data.escalera,
-      planta: data.planta,
-      puerta: data.puerta,
-      codigoPostal: data.codigoPostal,
-      poblacion: data.poblacion,
-      provincia: data.provincia,
-      pais: data.pais,
-      direccionCompleta: data.direccionCompleta,
-    });
+    onApplyNormalizedAddress({ via: data.via, direccion: data.direccion, numeroCalle: data.numeroCalle, bloque: data.bloque, escalera: data.escalera, planta: data.planta, puerta: data.puerta, codigoPostal: data.codigoPostal, poblacion: data.poblacion, provincia: data.provincia, pais: data.pais, direccionCompleta: data.direccionCompleta });
     setDireccionLibre(data.direccionCompleta || data.googleFormattedAddress || buildDireccionLibre({ ...asegurado, ...data }));
     toast.success("Dirección aplicada");
   };
@@ -308,11 +298,8 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
       const data = await normalizarDireccion(direccionLibre);
       const lista = data.candidates?.length ? data.candidates : [data];
       setCandidatos(lista);
-      if (lista.length === 1) {
-        aplicarCandidato(lista[0]);
-      } else {
-        toast.success(`${lista.length} direcciones encontradas. Elige la correcta.`);
-      }
+      if (lista.length === 1) aplicarCandidato(lista[0]);
+      else toast.success(`${lista.length} direcciones encontradas. Elige la correcta.`);
     } catch (error) {
       setCandidatos([]);
       toast.error(error instanceof Error ? error.message : "No se pudo normalizar la dirección");
@@ -339,24 +326,10 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
           <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div>
           <div className="mt-3 flex flex-col gap-2 lg:flex-row">
             <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Federico García Lorca 87 Valencia" className="h-11 rounded-xl" />
-            <Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">
-              {normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              Normalizar
-            </Button>
+            <Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">{normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Normalizar</Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">Si hay varias coincidencias, selecciona la dirección correcta de la lista.</p>
-          {candidatos.length > 1 ? (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm font-semibold">Direcciones encontradas</p>
-              {candidatos.map((c, index) => (
-                <button key={c.placeId || `${c.direccionCompleta}-${index}`} type="button" onClick={() => aplicarCandidato(c)} className="w-full rounded-xl border border-border/60 bg-background p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10">
-                  <p className="text-sm font-semibold">{c.direccionCompleta || c.googleFormattedAddress}</p>
-                  {c.googleFormattedAddress && c.googleFormattedAddress !== c.direccionCompleta ? <p className="mt-1 text-xs text-muted-foreground">{c.googleFormattedAddress}</p> : null}
-                  {c.consultaUsada ? <p className="mt-1 text-[11px] text-muted-foreground">Consulta usada: {c.consultaUsada}</p> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          {candidatos.length > 1 ? <div className="mt-3 space-y-2"><p className="text-sm font-semibold">Direcciones encontradas</p>{candidatos.map((c, index) => <button key={c.placeId || `${c.direccionCompleta}-${index}`} type="button" onClick={() => aplicarCandidato(c)} className="w-full rounded-xl border border-border/60 bg-background p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"><p className="text-sm font-semibold">{c.direccionCompleta || c.googleFormattedAddress}</p>{c.googleFormattedAddress && c.googleFormattedAddress !== c.direccionCompleta ? <p className="mt-1 text-xs text-muted-foreground">{c.googleFormattedAddress}</p> : null}{c.consultaUsada ? <p className="mt-1 text-[11px] text-muted-foreground">Consulta usada: {c.consultaUsada}</p> : null}</button>)}</div> : null}
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
@@ -376,22 +349,11 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
   );
 };
 
-const buildDireccionLibre = (asegurado: Asegurado) =>
-  [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]
-    .filter(Boolean)
-    .join(" ");
+const buildDireccionLibre = (asegurado: Asegurado) => [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia].filter(Boolean).join(" ");
 
 type ConfirmDeleteDialogProps = { asegurado: Asegurado; onCancel: () => void; onConfirm: () => void; };
 const ConfirmDeleteDialog = ({ asegurado, onCancel, onConfirm }: ConfirmDeleteDialogProps) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-    <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card p-6 shadow-strong">
-      <div className="flex gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10"><AlertTriangle className="h-6 w-6 text-destructive" /></div>
-        <div><h2 className="text-xl font-bold">Confirmar borrado</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.</p></div>
-      </div>
-      <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button><Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button></div>
-    </div>
-  </div>
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"><div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card p-6 shadow-strong"><div className="flex gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10"><AlertTriangle className="h-6 w-6 text-destructive" /></div><div><h2 className="text-xl font-bold">Confirmar borrado</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.</p></div></div><div className="mt-6 flex justify-end gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button><Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button></div></div></div>
 );
 
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; className?: string; };
