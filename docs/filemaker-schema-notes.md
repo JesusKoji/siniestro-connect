@@ -54,6 +54,39 @@ Polizas::_kf_ID_Asegurado
 - Clave primaria de `Polizas`: `_kp_ID_Poliza`.
 - Clave foránea en `Polizas` hacia `Asegurados`: `_kf_ID_Asegurado`.
 
+### Asegurados → Siniestros
+
+```text
+Asegurados::_kp_ID_Asegurado
+        =
+Siniestros::_kf_ID_Asegurado
+```
+
+- Clave primaria de `Siniestros`: `_kp_ID_Siniestro`.
+- Clave foránea en `Siniestros` hacia `Asegurados`: `_kf_ID_Asegurado`.
+
+### Polizas → Siniestros
+
+```text
+Polizas::_kp_ID_Poliza
+        =
+Siniestros::_kf_ID_Poliza
+```
+
+- Clave primaria de `Siniestros`: `_kp_ID_Siniestro`.
+- Clave foránea en `Siniestros` hacia `Polizas`: `_kf_ID_Poliza`.
+
+### Siniestros → ContactosSiniestros
+
+```text
+Siniestros::_kp_ID_Siniestro
+        =
+ContactosSiniestros::_kf_ID_Siniestro
+```
+
+- Clave primaria de `ContactosSiniestros`: `_kp_ID_ContSini`.
+- Clave foránea en `ContactosSiniestros` hacia `Siniestros`: `_kf_ID_Siniestro`.
+
 ## Campos clave para la interfaz web
 
 ### Asegurados
@@ -94,6 +127,8 @@ Polizas::_kf_ID_Asegurado
 
 Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmente relevantes para la web/agente:
 
+- Clave primaria: `_kp_ID_Siniestro`.
+- Claves foráneas: `_kf_ID_Poliza`, `_kf_ID_Asegurado`.
 - Identificación: `NumeroSiniestro`, `NumeroSiniestro2`, `id`.
 - Estado/ciclo: `FechaCierre` se usa para filtrar en curso cuando está vacío.
 - Asegurado: `NombreAseg`, `RazonSocial`, `NIFAsegurado`, `Asegurado` si está disponible en layout API.
@@ -107,7 +142,7 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 ### ContactosSiniestros
 
 - `_kp_ID_ContSini`: clave primaria.
-- `_kf_ID_Siniestro`: clave foránea al siniestro.
+- `_kf_ID_Siniestro`: clave foránea al siniestro; se relaciona con `Siniestros::_kp_ID_Siniestro`.
 - `Nombre`, `NombreCompleto`.
 - `Telefono`, `Telefono2`, `Movil`, `Mail`.
 - `Cargo`, `Notas`.
@@ -130,6 +165,8 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 4. Para la fase documental conviene añadir o mapear una tabla específica de índice documental, porque los archivos no se guardan como contenedores en FileMaker.
 5. Para cargar contactos del asegurado desde la web se debe obtener primero `_kp_ID_Asegurado` del asegurado vinculado y luego buscar en `ContactosAsegurados::_kf_ID_Asegurado`.
 6. Para cargar pólizas del asegurado desde la web se debe obtener primero `_kp_ID_Asegurado` del asegurado vinculado y luego buscar en `Polizas::_kf_ID_Asegurado`.
+7. Para cargar contactos del siniestro desde la web se debe obtener primero `_kp_ID_Siniestro` y luego buscar en `ContactosSiniestros::_kf_ID_Siniestro`.
+8. Para cargar la póliza concreta del siniestro se debe usar `Siniestros::_kf_ID_Poliza` contra `Polizas::_kp_ID_Poliza`.
 
 ## Pendiente de ampliar
 
