@@ -13,10 +13,19 @@ Fuente: DDR parcial aportado en `Archivo.zip` el 2026-05-19. Este documento se i
 ## Criterios ya confirmados para la web
 
 - Base de datos: `GestionPericial`
-- Layout API actual: `API_EnlacesSiniestros`
+- Layout API actual para listado/enlaces: `API_EnlacesSiniestros`
 - Script para enlaces/WhatsApp: `SMS`
 - Siniestros en curso: campo `FechaCierre` vacío (`=` en búsqueda FileMaker)
 - Campos usados inicialmente en la web: `NumeroSiniestro`, `Asegurado`, `zVistaDireccionCrawfordEnLinea`, `TipoSiniestro`, `siniestros_polizas_COMPANIAS::Alias` / `siniestros_polizas_COMPANIAS:Alias`
+
+## Layouts API disponibles
+
+- `API_Asegurados`: layout API para tabla `Asegurados`.
+- `API_ContactosAsegurado`: layout API para tabla `ContactosAsegurados`.
+- `API_Polizas`: layout API para tabla `Polizas`.
+- `API_Siniestros`: layout API para tabla `Siniestros`.
+- `API_ContactosSiniestros`: layout API para tabla `ContactosSiniestros`.
+- `API_EnlacesSiniestros`: layout API utilizado actualmente por la web para siniestros en curso y envío de enlaces.
 
 ## Modelo funcional inicial
 
@@ -167,10 +176,10 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 6. Para cargar pólizas del asegurado desde la web se debe obtener primero `_kp_ID_Asegurado` del asegurado vinculado y luego buscar en `Polizas::_kf_ID_Asegurado`.
 7. Para cargar contactos del siniestro desde la web se debe obtener primero `_kp_ID_Siniestro` y luego buscar en `ContactosSiniestros::_kf_ID_Siniestro`.
 8. Para cargar la póliza concreta del siniestro se debe usar `Siniestros::_kf_ID_Poliza` contra `Polizas::_kp_ID_Poliza`.
+9. Los layouts API disponibles permiten cargar estos módulos de forma separada desde la web usando la Data API.
 
 ## Pendiente de ampliar
 
-- Relaciones reales entre tablas y nombres exactos de TOs.
-- Layouts API disponibles.
 - Scripts relacionados con `SMS`, Dropbox, enlaces y alta documental.
 - Tablas de documentos, comunicaciones, alertas, tareas, facturación e informes.
+- Campos exactos incluidos actualmente en cada layout API.
