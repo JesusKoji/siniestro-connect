@@ -34,6 +34,31 @@ export interface Asegurado {
   telefono: string;
 }
 
+export interface ContactoAsegurado {
+  id: string;
+  idAsegurado: string;
+  nombre: string;
+  nombreCompleto: string;
+  cargo: string;
+  telefono: string;
+  telefono2: string;
+  movil: string;
+  mail: string;
+  notas: string;
+}
+
+export interface Poliza {
+  id: string;
+  idAsegurado: string;
+  numeroPoliza: string;
+  direccionCompleta: string;
+  poblacion: string;
+  provincia: string;
+  agente: string;
+  telefonoAgente: string;
+  emailAgente: string;
+}
+
 export const aseguradoMock: Asegurado = {
   id: "ASEG-1",
   nif: "12345678Z",
@@ -55,6 +80,35 @@ export const aseguradoMock: Asegurado = {
   email: "antonio@example.com",
   telefono: "600000000",
 };
+
+export const contactosAseguradoMock: ContactoAsegurado[] = [
+  {
+    id: "CONT-1",
+    idAsegurado: "ASEG-1",
+    nombre: "Antonio García",
+    nombreCompleto: "Antonio García López",
+    cargo: "Asegurado",
+    telefono: "961000000",
+    telefono2: "",
+    movil: "600000000",
+    mail: "antonio@example.com",
+    notas: "",
+  },
+];
+
+export const polizasMock: Poliza[] = [
+  {
+    id: "POL-1",
+    idAsegurado: "ASEG-1",
+    numeroPoliza: "POL-2025-001",
+    direccionCompleta: "C/ Mayor 23 · 28013 Madrid",
+    poblacion: "Madrid",
+    provincia: "Madrid",
+    agente: "",
+    telefonoAgente: "",
+    emailAgente: "",
+  },
+];
 
 export const siniestrosMock: Siniestro[] = [
   {
