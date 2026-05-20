@@ -23,7 +23,7 @@ Fuente: DDR parcial aportado en `Archivo.zip` el 2026-05-19. Este documento se i
 - `API_Asegurados`: layout API para tabla `Asegurados`.
 - `API_ContactosAsegurado`: layout API para tabla `ContactosAsegurados`.
 - `API_Polizas`: layout API para tabla `Polizas`.
-- `API_Siniestros`: layout API para tabla `Siniestros`.
+- `API_Siniestros`: layout API para tabla `Siniestros`. Confirmado que incluye `_kp_ID_Siniestro`, `_kf_ID_Asegurado` y `_kf_ID_Poliza`.
 - `API_ContactosSiniestros`: layout API para tabla `ContactosSiniestros`.
 - `API_EnlacesSiniestros`: layout API utilizado actualmente por la web para siniestros en curso y envío de enlaces.
 
@@ -138,6 +138,7 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 
 - Clave primaria: `_kp_ID_Siniestro`.
 - Claves foráneas: `_kf_ID_Poliza`, `_kf_ID_Asegurado`.
+- Estos tres campos están confirmados en `API_Siniestros` y se usarán para enriquecer la ficha web.
 - Identificación: `NumeroSiniestro`, `NumeroSiniestro2`, `id`.
 - Estado/ciclo: `FechaCierre` se usa para filtrar en curso cuando está vacío.
 - Asegurado: `NombreAseg`, `RazonSocial`, `NIFAsegurado`, `Asegurado` si está disponible en layout API.
@@ -177,6 +178,7 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 7. Para cargar contactos del siniestro desde la web se debe obtener primero `_kp_ID_Siniestro` y luego buscar en `ContactosSiniestros::_kf_ID_Siniestro`.
 8. Para cargar la póliza concreta del siniestro se debe usar `Siniestros::_kf_ID_Poliza` contra `Polizas::_kp_ID_Poliza`.
 9. Los layouts API disponibles permiten cargar estos módulos de forma separada desde la web usando la Data API.
+10. Siguiente fase web recomendada: al seleccionar un siniestro, cargar el registro completo desde `API_Siniestros` y usar sus claves para cargar `API_ContactosSiniestros`, `API_Asegurados`, `API_Polizas` y `API_ContactosAsegurado`.
 
 ## Pendiente de ampliar
 
