@@ -14,6 +14,7 @@ export interface Siniestro {
 
 export interface Asegurado {
   id: string;
+  recordId?: string;
   nif: string;
   tipoPersona: string;
   nombre: string;
@@ -61,6 +62,7 @@ export interface Poliza {
 
 export const aseguradoMock: Asegurado = {
   id: "ASEG-1",
+  recordId: "1",
   nif: "12345678Z",
   tipoPersona: "Persona física",
   nombre: "Antonio",
