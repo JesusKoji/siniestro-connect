@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { AseguradoCard } from "@/components/AseguradoCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   obtenerSiniestrosAsegurado,
 } from "@/lib/filemaker";
 import {
+  AlertTriangle,
   Building2,
   Edit3,
   FileText,
@@ -73,6 +74,7 @@ export const AseguradosApp = () => {
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
   const [loadingRelaciones, setLoadingRelaciones] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
 
   const cargarRelaciones = (asegurado: Asegurado) => {
     setContactos([]);
@@ -174,7 +176,12 @@ export const AseguradosApp = () => {
 
   const borrarAsegurado = () => {
     if (!seleccionado) return;
-    toast.error("El borrado lo activaremos después con confirmación y comprobación de pólizas/siniestros relacionados.");
+    setConfirmarBorrado(true);
+  };
+
+  const confirmarBorradoAsegurado = () => {
+    setConfirmarBorrado(false);
+    toast.error("Borrado pendiente de conectar con FileMaker. Antes activaremos la comprobación de pólizas y siniestros relacionados.");
   };
 
   const resumen = useMemo(
@@ -257,6 +264,14 @@ export const AseguradosApp = () => {
           <div className="flex min-h-[520px] items-center justify-center p-8 text-center text-muted-foreground"><div><Building2 className="mx-auto mb-4 h-12 w-12 opacity-40" /><p>Busca un asegurado o crea una nueva ficha.</p></div></div>
         )}
       </section>
+
+      {confirmarBorrado && seleccionado ? (
+        <ConfirmDeleteDialog
+          asegurado={seleccionado}
+          onCancel={() => setConfirmarBorrado(false)}
+          onConfirm={confirmarBorradoAsegurado}
+        />
+      ) : null}
     </main>
   );
 };
@@ -265,13 +280,17 @@ type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guarda
 
 const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel, onApplyNormalizedAddress }: AseguradoEditorProps) => {
   const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur");
-  const [direccionLibre, setDireccionLibre] = useState("");
+  const [direccionLibre, setDireccionLibre] = useState(buildDireccionLibre(asegurado));
   const [normalizando, setNormalizando] = useState(false);
+
+  useEffect(() => {
+    setDireccionLibre(buildDireccionLibre(asegurado));
+  }, [asegurado.id, asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]);
 
   const ejecutarNormalizacion = async () => {
     setNormalizando(true);
     try {
-      const data = await normalizarDireccion(direccionLibre || [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia].filter(Boolean).join(" "));
+      const data = await normalizarDireccion(direccionLibre);
       onApplyNormalizedAddress({
         via: data.via,
         direccion: data.direccion,
@@ -317,7 +336,7 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
               Normalizar
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Google Maps normaliza calle, número, población, provincia y código postal. Bloque, escalera, planta y puerta se completan manualmente.</p>
+          <p className="mt-2 text-xs text-muted-foreground">El campo se rellena con la dirección actual. Puedes modificarla antes de normalizar.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
@@ -336,6 +355,34 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
     </form>
   );
 };
+
+const buildDireccionLibre = (asegurado: Asegurado) =>
+  [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]
+    .filter(Boolean)
+    .join(" ");
+
+type ConfirmDeleteDialogProps = { asegurado: Asegurado; onCancel: () => void; onConfirm: () => void; };
+const ConfirmDeleteDialog = ({ asegurado, onCancel, onConfirm }: ConfirmDeleteDialogProps) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+    <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card p-6 shadow-strong">
+      <div className="flex gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10">
+          <AlertTriangle className="h-6 w-6 text-destructive" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">Confirmar borrado</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.
+          </p>
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button>
+        <Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button>
+      </div>
+    </div>
+  </div>
+);
 
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; className?: string; };
 const Field = ({ label, value, onChange, required = false, className = "" }: FieldProps) => <div className={`space-y-2 ${className}`}><Label>{label}</Label><Input value={value || ""} onChange={(e) => onChange(e.target.value)} required={required} className="h-11 rounded-xl" /></div>;
