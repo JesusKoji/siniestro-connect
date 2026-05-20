@@ -33,11 +33,13 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
 
   const direccionNormalizada = buildDireccionNormalizada(asegurado);
   const direccionMapa = direccionNormalizada || asegurado.direccionCompleta || "";
-  const mapEmbedUrl = direccionMapa
-    ? `https://www.google.com/maps?q=${encodeURIComponent(direccionMapa)}&output=embed`
+  const direccionBusquedaMapa = buildDireccionBusquedaMapa(asegurado) || normalizarDireccionParaMapa(direccionMapa);
+  const encodedMapQuery = encodeURIComponent(direccionBusquedaMapa);
+  const mapEmbedUrl = direccionBusquedaMapa
+    ? `https://maps.google.com/maps?hl=es&q=${encodedMapQuery}&z=18&ie=UTF8&iwloc=B&output=embed`
     : "";
-  const mapOpenUrl = direccionMapa
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionMapa)}`
+  const mapOpenUrl = direccionBusquedaMapa
+    ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
     : "";
 
   const esEmpresa = Boolean(asegurado.razonSocial);
@@ -92,6 +94,7 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
         <MapDialog
           title={asegurado.displayName || "Asegurado"}
           address={direccionMapa}
+          searchAddress={direccionBusquedaMapa}
           embedUrl={mapEmbedUrl}
           openUrl={mapOpenUrl}
           onClose={() => setMapaAbierto(false)}
@@ -118,15 +121,37 @@ function buildDireccionNormalizada(asegurado: Asegurado) {
     .join(" · ");
 }
 
+function buildDireccionBusquedaMapa(asegurado: Asegurado) {
+  return [
+    [asegurado.via, asegurado.direccion, asegurado.numeroCalle].filter(Boolean).join(" "),
+    [asegurado.codigoPostal, asegurado.poblacion].filter(Boolean).join(" "),
+    asegurado.provincia,
+    asegurado.pais || "España",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function normalizarDireccionParaMapa(address: string) {
+  return address
+    .replace(/·/g, ",")
+    .replace(/\b(Bloque|Blq\.|Esc\.|Escalera|Planta|Plt\.|Puerta|Pta\.)\s*[^,·]*/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/,+/g, ",")
+    .replace(/,\s*,/g, ",")
+    .trim();
+}
+
 type MapDialogProps = {
   title: string;
   address: string;
+  searchAddress: string;
   embedUrl: string;
   openUrl: string;
   onClose: () => void;
 };
 
-const MapDialog = ({ title, address, embedUrl, openUrl, onClose }: MapDialogProps) => (
+const MapDialog = ({ title, address, searchAddress, embedUrl, openUrl, onClose }: MapDialogProps) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
     <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-card shadow-strong">
       <div className="flex items-start justify-between gap-4 border-b border-border/60 p-5">
@@ -134,6 +159,9 @@ const MapDialog = ({ title, address, embedUrl, openUrl, onClose }: MapDialogProp
           <h2 className="text-xl font-bold">Ubicación del asegurado</h2>
           <p className="mt-1 text-sm font-medium">{title}</p>
           <p className="mt-1 text-sm text-muted-foreground">{address}</p>
+          {searchAddress && searchAddress !== address ? (
+            <p className="mt-1 text-xs text-muted-foreground">Búsqueda en mapa: {searchAddress}</p>
+          ) : null}
         </div>
         <Button type="button" variant="ghost" onClick={onClose} className="rounded-xl">
           <X className="h-5 w-5" />
@@ -141,7 +169,7 @@ const MapDialog = ({ title, address, embedUrl, openUrl, onClose }: MapDialogProp
       </div>
       <div className="h-[68vh] min-h-[420px] bg-muted">
         <iframe
-          title={`Mapa de ${address}`}
+          title={`Mapa de ${searchAddress || address}`}
           src={embedUrl}
           className="h-full w-full border-0"
           loading="lazy"
@@ -150,7 +178,7 @@ const MapDialog = ({ title, address, embedUrl, openUrl, onClose }: MapDialogProp
         />
       </div>
       <div className="flex flex-col gap-2 border-t border-border/60 p-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-xs text-muted-foreground">La chincheta se genera con la búsqueda de Google Maps sobre la dirección normalizada.</p>
+        <p className="text-xs text-muted-foreground">La chincheta usa la dirección postal, sin bloque, escalera, planta ni puerta, para mejorar la precisión.</p>
         <a href={openUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-xl border border-border/60 px-4 py-2 text-sm font-medium transition-smooth hover:bg-accent/10">
           Abrir en Google Maps
           <ExternalLink className="ml-2 h-4 w-4" />
