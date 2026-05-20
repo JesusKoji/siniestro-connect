@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { LoginScreen } from "@/components/LoginScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,14 +22,18 @@ import {
 import { toast } from "sonner";
 
 export const DesktopApp = () => {
+  const [autenticado, setAutenticado] = useState(false);
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
   const [query, setQuery] = useState("");
   const [movil, setMovil] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
+    if (!autenticado) return;
+
+    setLoading(true);
     listarSiniestrosEnCurso()
       .then((data) => {
         setSiniestros(data);
@@ -39,7 +44,7 @@ export const DesktopApp = () => {
         toast.error(msg);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [autenticado]);
 
   useEffect(() => {
     setMovil("");
@@ -73,9 +78,16 @@ export const DesktopApp = () => {
 
   const logout = () => {
     cerrarSesion();
+    setAutenticado(false);
     setSiniestros([]);
     setSeleccionado(null);
+    setQuery("");
+    setMovil("");
   };
+
+  if (!autenticado) {
+    return <LoginScreen onLogin={() => setAutenticado(true)} />;
+  }
 
   return (
     <div className="min-h-screen gradient-surface text-foreground">
