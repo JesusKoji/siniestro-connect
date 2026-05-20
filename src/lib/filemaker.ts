@@ -4,14 +4,25 @@
  * La app puede trabajar en modo mock o contra FileMaker real usando variables de entorno Vite.
  * En desarrollo crea un .env.local basado en .env.example.
  */
-import { Asegurado, aseguradoMock, Siniestro, siniestrosMock } from "@/data/siniestros";
+import {
+  Asegurado,
+  aseguradoMock,
+  ContactoAsegurado,
+  contactosAseguradoMock,
+  Poliza,
+  polizasMock,
+  Siniestro,
+  siniestrosMock,
+} from "@/data/siniestros";
 
 export const FM_CONFIG = {
-  host: import.meta.env.VITE_FM_HOST ?? "", // ej: "https://localhost" o vacío para mismo origen
+  host: import.meta.env.VITE_FM_HOST ?? "",
   database: import.meta.env.VITE_FM_DATABASE ?? "GestionPericial",
   layout: import.meta.env.VITE_FM_LAYOUT ?? "API_EnlacesSiniestros",
   layoutSiniestros: import.meta.env.VITE_FM_LAYOUT_SINIESTROS ?? "API_Siniestros",
   layoutAsegurados: import.meta.env.VITE_FM_LAYOUT_ASEGURADOS ?? "API_Asegurados",
+  layoutContactosAsegurado: import.meta.env.VITE_FM_LAYOUT_CONTACTOS_ASEGURADO ?? "API_ContactosAsegurado",
+  layoutPolizas: import.meta.env.VITE_FM_LAYOUT_POLIZAS ?? "API_Polizas",
   scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "SMS",
   filtroEnCursoCampo: import.meta.env.VITE_FM_FILTRO_EN_CURSO_CAMPO ?? "FechaCierre",
   filtroEnCursoValor: import.meta.env.VITE_FM_FILTRO_EN_CURSO_VALOR ?? "=",
@@ -44,17 +55,14 @@ async function login(usuario: string, password: string): Promise<string> {
     return token;
   }
 
-  const res = await fetch(
-    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/sessions`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Basic " + btoa(`${usuario}:${password}`),
-      },
-      body: JSON.stringify({}),
-    }
-  );
+  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Basic " + btoa(`${usuario}:${password}`),
+    },
+    body: JSON.stringify({}),
+  });
 
   if (!res.ok) throw new Error("Usuario o contraseña incorrectos");
   const data = await res.json();
@@ -87,7 +95,7 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
   }
 
   debug("La búsqueda por FechaCierre no devolvió registros. Probando lectura de registros y filtro en cliente.");
-  const registros = await listarRegistrosLayout();
+  const registros = await listarRegistrosLayout(FM_CONFIG.layout, 200);
   const campoFiltro = FM_CONFIG.filtroEnCursoCampo;
   const filtradosEnCliente = registros.filter((record) => {
     const valor = record.fieldData[campoFiltro];
@@ -104,124 +112,14 @@ export async function listarSiniestrosEnCurso(): Promise<Siniestro[]> {
   return filtradosEnCliente.map(mapearSiniestro);
 }
 
-async function buscarRegistrosEnCurso(): Promise<FileMakerRecord[]> {
-  const body = {
-    query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }],
-    limit: "200",
-  };
-
-  debug("Find siniestros", { layout: FM_CONFIG.layout, body });
-
-  const res = await fetch(
-    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/_find`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  const data = await res.json().catch(() => null);
-  debug("Find siniestros response", data);
-
-  if (!res.ok) {
-    throw new Error(getFileMakerErrorMessage(data) || "No se pudieron cargar los siniestros");
-  }
-
-  const code = data?.messages?.[0]?.code;
-  if (code === "401") {
-    return [];
-  }
-
-  return data?.response?.data ?? [];
-}
-
-async function listarRegistrosLayout(): Promise<FileMakerRecord[]> {
-  const res = await fetch(
-    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/records?_limit=200`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  const data = await res.json().catch(() => null);
-  debug("List records response", data);
-
-  if (!res.ok) {
-    throw new Error(getFileMakerErrorMessage(data) || "No se pudieron listar registros del layout");
-  }
-
-  return data?.response?.data ?? [];
-}
-
-function mapearSiniestro(record: FileMakerRecord): Siniestro {
-  const fieldData = record.fieldData;
-  return {
-    id: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]) || record.recordId,
-    idSiniestro: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]),
-    idAsegurado: fieldData._kf_ID_Asegurado ?? "",
-    idPoliza: fieldData._kf_ID_Poliza ?? "",
-    numero: fieldData.NumeroSiniestro ?? "",
-    compania: getFirstValue(fieldData, [
-      "siniestros_polizas_COMPANIAS::Alias",
-      "siniestros_polizas_COMPANIAS:Alias",
-      "Alias",
-    ]),
-    asegurado: fieldData.Asegurado ?? getFirstValue(fieldData, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
-    direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
-    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo", "FechaRecepcion"]) || new Date().toISOString(),
-    tipo: fieldData.TipoSiniestro ?? "",
-  };
-}
-
-export async function obtenerDetalleSiniestro(siniestro: Siniestro): Promise<Siniestro> {
-  if (siniestro.idAsegurado && siniestro.idPoliza) {
-    return siniestro;
-  }
-
+export async function listarAsegurados(limit = 100): Promise<Asegurado[]> {
   if (USE_MOCK) {
-    await wait(200);
-    return siniestro;
+    await wait(250);
+    return [aseguradoMock];
   }
 
-  const idSiniestro = siniestro.idSiniestro || siniestro.id;
-  const body = {
-    query: [{ _kp_ID_Siniestro: idSiniestro }],
-    limit: "1",
-  };
-
-  debug("Find detalle siniestro", { layout: FM_CONFIG.layoutSiniestros, body });
-
-  const res = await fetch(
-    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutSiniestros}/_find`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  const data = await res.json().catch(() => null);
-  debug("Find detalle siniestro response", data);
-
-  if (!res.ok) {
-    const code = data?.messages?.[0]?.code;
-    if (code === "401") return siniestro;
-    throw new Error(getFileMakerErrorMessage(data) || "No se pudo cargar el detalle del siniestro");
-  }
-
-  const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
-  return record ? { ...siniestro, ...mapearSiniestro(record) } : siniestro;
+  const registros = await listarRegistrosLayout(FM_CONFIG.layoutAsegurados, limit);
+  return registros.map(mapearAsegurado);
 }
 
 export async function obtenerAsegurado(idAsegurado?: string): Promise<Asegurado | null> {
@@ -238,30 +136,162 @@ export async function obtenerAsegurado(idAsegurado?: string): Promise<Asegurado 
   };
 
   debug("Find asegurado", { layout: FM_CONFIG.layoutAsegurados, body });
+  const data = await findRecords(FM_CONFIG.layoutAsegurados, body);
+  const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
+  return record ? mapearAsegurado(record) : null;
+}
 
-  const res = await fetch(
-    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutAsegurados}/_find`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    }
-  );
+export async function buscarAsegurados(texto: string): Promise<Asegurado[]> {
+  const q = texto.trim();
+  if (!q) return listarAsegurados(100);
+
+  if (USE_MOCK) {
+    await wait(200);
+    return [aseguradoMock].filter((a) =>
+      [a.displayName, a.nif, a.direccionCompleta, a.poblacion, a.provincia].join(" ").toLowerCase().includes(q.toLowerCase())
+    );
+  }
+
+  const body = {
+    query: [
+      { NIF: `*${q}*` },
+      { NombreCompleto: `*${q}*` },
+      { RazonSocial: `*${q}*` },
+      { DireccCompleta: `*${q}*` },
+      { Poblacion: `*${q}*` },
+    ],
+    limit: "100",
+  };
+
+  debug("Find asegurados", { layout: FM_CONFIG.layoutAsegurados, body });
+  const data = await findRecords(FM_CONFIG.layoutAsegurados, body);
+  return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearAsegurado);
+}
+
+export async function obtenerContactosAsegurado(idAsegurado?: string): Promise<ContactoAsegurado[]> {
+  if (!idAsegurado) return [];
+  if (USE_MOCK) {
+    await wait(150);
+    return contactosAseguradoMock;
+  }
+
+  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
+  debug("Find contactos asegurado", { layout: FM_CONFIG.layoutContactosAsegurado, body });
+  const data = await findRecords(FM_CONFIG.layoutContactosAsegurado, body, true);
+  return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearContactoAsegurado);
+}
+
+export async function obtenerPolizasAsegurado(idAsegurado?: string): Promise<Poliza[]> {
+  if (!idAsegurado) return [];
+  if (USE_MOCK) {
+    await wait(150);
+    return polizasMock;
+  }
+
+  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
+  debug("Find polizas asegurado", { layout: FM_CONFIG.layoutPolizas, body });
+  const data = await findRecords(FM_CONFIG.layoutPolizas, body, true);
+  return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearPoliza);
+}
+
+export async function obtenerSiniestrosAsegurado(idAsegurado?: string): Promise<Siniestro[]> {
+  if (!idAsegurado) return [];
+  if (USE_MOCK) {
+    await wait(150);
+    return siniestrosMock;
+  }
+
+  const body = { query: [{ _kf_ID_Asegurado: idAsegurado }], limit: "100" };
+  debug("Find siniestros asegurado", { layout: FM_CONFIG.layoutSiniestros, body });
+  const data = await findRecords(FM_CONFIG.layoutSiniestros, body, true);
+  return ((data?.response?.data ?? []) as FileMakerRecord[]).map(mapearSiniestro);
+}
+
+async function buscarRegistrosEnCurso(): Promise<FileMakerRecord[]> {
+  const body = {
+    query: [{ [FM_CONFIG.filtroEnCursoCampo]: FM_CONFIG.filtroEnCursoValor }],
+    limit: "200",
+  };
+
+  debug("Find siniestros", { layout: FM_CONFIG.layout, body });
+  const data = await findRecords(FM_CONFIG.layout, body);
+  debug("Find siniestros response", data);
+  return data?.response?.data ?? [];
+}
+
+async function findRecords(layout: string, body: object, emptyIsOk = false) {
+  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${layout}/_find`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
 
   const data = await res.json().catch(() => null);
-  debug("Find asegurado response", data);
 
   if (!res.ok) {
     const code = data?.messages?.[0]?.code;
-    if (code === "401") return null;
-    throw new Error(getFileMakerErrorMessage(data) || "No se pudo cargar el asegurado");
+    if (emptyIsOk && code === "401") return { response: { data: [] }, messages: data?.messages };
+    throw new Error(getFileMakerErrorMessage(data) || `No se pudo consultar el layout ${layout}`);
   }
 
+  const code = data?.messages?.[0]?.code;
+  if (emptyIsOk && code === "401") return { response: { data: [] }, messages: data?.messages };
+
+  return data;
+}
+
+async function listarRegistrosLayout(layout: string, limit = 200): Promise<FileMakerRecord[]> {
+  const res = await fetch(`${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${layout}/records?_limit=${limit}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await res.json().catch(() => null);
+  debug(`List records response ${layout}`, data);
+
+  if (!res.ok) {
+    throw new Error(getFileMakerErrorMessage(data) || `No se pudieron listar registros del layout ${layout}`);
+  }
+
+  return data?.response?.data ?? [];
+}
+
+function mapearSiniestro(record: FileMakerRecord): Siniestro {
+  const fieldData = record.fieldData;
+  return {
+    id: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]) || record.recordId,
+    idSiniestro: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]),
+    idAsegurado: fieldData._kf_ID_Asegurado ?? "",
+    idPoliza: fieldData._kf_ID_Poliza ?? "",
+    numero: fieldData.NumeroSiniestro ?? "",
+    compania: getFirstValue(fieldData, ["siniestros_polizas_COMPANIAS::Alias", "siniestros_polizas_COMPANIAS:Alias", "Alias"]),
+    asegurado: fieldData.Asegurado ?? getFirstValue(fieldData, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
+    direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
+    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo", "FechaRecepcion"]) || new Date().toISOString(),
+    tipo: fieldData.TipoSiniestro ?? "",
+  };
+}
+
+export async function obtenerDetalleSiniestro(siniestro: Siniestro): Promise<Siniestro> {
+  if (siniestro.idAsegurado && siniestro.idPoliza) return siniestro;
+  if (USE_MOCK) {
+    await wait(200);
+    return siniestro;
+  }
+
+  const idSiniestro = siniestro.idSiniestro || siniestro.id;
+  const body = { query: [{ _kp_ID_Siniestro: idSiniestro }], limit: "1" };
+  debug("Find detalle siniestro", { layout: FM_CONFIG.layoutSiniestros, body });
+  const data = await findRecords(FM_CONFIG.layoutSiniestros, body, true);
+  debug("Find detalle siniestro response", data);
   const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
-  return record ? mapearAsegurado(record) : null;
+  return record ? { ...siniestro, ...mapearSiniestro(record) } : siniestro;
 }
 
 function mapearAsegurado(record: FileMakerRecord): Asegurado {
@@ -296,49 +326,56 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
   };
 }
 
-export async function ejecutarScriptEnviarEnlace(
-  numeroSiniestro: string,
-  movil: string
-): Promise<EnviarEnlaceResult> {
-  const movilNormalizado = normalizarMovil(movil);
+function mapearContactoAsegurado(record: FileMakerRecord): ContactoAsegurado {
+  const f = record.fieldData;
+  return {
+    id: f._kp_ID_ContactoAseg || record.recordId,
+    idAsegurado: f._kf_ID_Asegurado ?? "",
+    nombre: f.Nombre ?? "",
+    nombreCompleto: f.NombreCompleto ?? f.Nombre ?? "",
+    cargo: f.Cargo ?? "",
+    telefono: f.Telefono ?? "",
+    telefono2: f.Telefono2 ?? "",
+    movil: f.Movil ?? "",
+    mail: f.Mail ?? f.email ?? "",
+    notas: f.Notas ?? "",
+  };
+}
 
-  if (!movilNormalizado) {
-    throw new Error("Introduce un número de móvil válido");
-  }
+function mapearPoliza(record: FileMakerRecord): Poliza {
+  const f = record.fieldData;
+  return {
+    id: f._kp_ID_Poliza || record.recordId,
+    idAsegurado: f._kf_ID_Asegurado ?? "",
+    numeroPoliza: f.NumeroPoliza ?? "",
+    direccionCompleta: getFirstValue(f, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
+    poblacion: f.Poblacion ?? "",
+    provincia: f.Provincia ?? "",
+    agente: f.Agente ?? "",
+    telefonoAgente: f.TlfAgente ?? f.TlfAgente2 ?? "",
+    emailAgente: f.EmailAgente ?? "",
+  };
+}
+
+export async function ejecutarScriptEnviarEnlace(numeroSiniestro: string, movil: string): Promise<EnviarEnlaceResult> {
+  const movilNormalizado = normalizarMovil(movil);
+  if (!movilNormalizado) throw new Error("Introduce un número de móvil válido");
 
   if (USE_MOCK) {
     await wait(800);
-    const texto = `Enlace de subida de documentación para el siniestro ${numeroSiniestro}: https://example.com/subida/${encodeURIComponent(
-      numeroSiniestro
-    )}`;
-    return {
-      ok: true,
-      movil: movilNormalizado,
-      texto,
-      url: crearWhatsAppUrl(movilNormalizado, texto),
-    };
+    const texto = `Enlace de subida de documentación para el siniestro ${numeroSiniestro}: https://example.com/subida/${encodeURIComponent(numeroSiniestro)}`;
+    return { ok: true, movil: movilNormalizado, texto, url: crearWhatsAppUrl(movilNormalizado, texto) };
   }
 
-  const scriptParam = {
-    numeroSiniestro,
-    movil: movilNormalizado,
-  };
-
-  const url = `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/script/${encodeURIComponent(
-    FM_CONFIG.scriptEnviarEnlace
-  )}?script.param=${encodeURIComponent(JSON.stringify(scriptParam))}`;
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const scriptParam = { numeroSiniestro, movil: movilNormalizado };
+  const url = `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layout}/script/${encodeURIComponent(FM_CONFIG.scriptEnviarEnlace)}?script.param=${encodeURIComponent(JSON.stringify(scriptParam))}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
   if (!res.ok) throw new Error("No se pudo ejecutar el script");
   const data = await res.json();
   const scriptResult = data?.response?.scriptResult;
 
-  if (!scriptResult) {
-    return { ok: true, raw: data };
-  }
+  if (!scriptResult) return { ok: true, raw: data };
 
   try {
     const parsed = JSON.parse(scriptResult) as EnviarEnlaceResult;
