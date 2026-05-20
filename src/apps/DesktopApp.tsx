@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { AseguradoCard } from "@/components/AseguradoCard";
 import { Logo } from "@/components/Logo";
 import { LoginScreen } from "@/components/LoginScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Siniestro } from "@/data/siniestros";
-import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso } from "@/lib/filemaker";
+import { Asegurado, Siniestro } from "@/data/siniestros";
+import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso, obtenerAsegurado } from "@/lib/filemaker";
 import {
   Building2,
   Calendar,
@@ -25,9 +26,11 @@ export const DesktopApp = () => {
   const [autenticado, setAutenticado] = useState(false);
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
+  const [asegurado, setAsegurado] = useState<Asegurado | null>(null);
   const [query, setQuery] = useState("");
   const [movil, setMovil] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingAsegurado, setLoadingAsegurado] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
@@ -48,7 +51,19 @@ export const DesktopApp = () => {
 
   useEffect(() => {
     setMovil("");
-  }, [seleccionado?.id]);
+    setAsegurado(null);
+
+    if (!seleccionado?.idAsegurado) return;
+
+    setLoadingAsegurado(true);
+    obtenerAsegurado(seleccionado.idAsegurado)
+      .then(setAsegurado)
+      .catch((error) => {
+        const msg = error instanceof Error ? error.message : "No se pudo cargar el asegurado";
+        toast.error(msg);
+      })
+      .finally(() => setLoadingAsegurado(false));
+  }, [seleccionado?.id, seleccionado?.idAsegurado]);
 
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -81,6 +96,7 @@ export const DesktopApp = () => {
     setAutenticado(false);
     setSiniestros([]);
     setSeleccionado(null);
+    setAsegurado(null);
     setQuery("");
     setMovil("");
   };
@@ -212,28 +228,32 @@ export const DesktopApp = () => {
                 </div>
               </div>
 
-              <div className="grid gap-4 p-6 xl:grid-cols-2">
-                <DetailCard icon={User} label="Asegurado" value={seleccionado.asegurado} />
-                <DetailCard icon={Building2} label="Compañía" value={seleccionado.compania} />
-                <DetailCard icon={MapPin} label="Dirección" value={seleccionado.direccion} />
-                <DetailCard icon={Tag} label="Tipo" value={seleccionado.tipo} />
-                <DetailCard
-                  icon={Calendar}
-                  label="Fecha apertura"
-                  value={new Date(seleccionado.fechaApertura).toLocaleDateString("es-ES", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                />
-              </div>
+              <div className="space-y-4 p-6">
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <DetailCard icon={User} label="Asegurado" value={seleccionado.asegurado} />
+                  <DetailCard icon={Building2} label="Compañía" value={seleccionado.compania} />
+                  <DetailCard icon={MapPin} label="Dirección riesgo" value={seleccionado.direccion} />
+                  <DetailCard icon={Tag} label="Tipo" value={seleccionado.tipo} />
+                  <DetailCard
+                    icon={Calendar}
+                    label="Fecha apertura"
+                    value={new Date(seleccionado.fechaApertura).toLocaleDateString("es-ES", {
+                      day: "2-digit",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  />
+                </div>
 
-              <div className="mx-6 mb-6 rounded-3xl border border-dashed border-border/80 bg-secondary/40 p-6">
-                <h3 className="font-semibold">Próximos módulos</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Aquí añadiremos documentos, fotos, correos, informes, alertas y recordatorios del expediente.
-                  Esta primera versión mantiene la función crítica de enviar enlaces y añade una base de escritorio segura.
-                </p>
+                <AseguradoCard asegurado={asegurado} loading={loadingAsegurado} />
+
+                <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/40 p-6">
+                  <h3 className="font-semibold">Próximos módulos</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Aquí añadiremos contactos, pólizas, documentos, fotos, correos, informes, alertas y recordatorios del expediente.
+                    Esta versión ya incorpora la ficha base del asegurado.
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
@@ -264,7 +284,7 @@ const DetailCard = ({ icon: Icon, label, value }: DetailCardProps) => (
       </div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="mt-1 break-words font-semibold leading-snug">{value}</p>
+        <p className="mt-1 break-words font-semibold leading-snug">{value || "-"}</p>
       </div>
     </div>
   </div>
