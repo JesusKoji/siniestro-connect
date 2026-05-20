@@ -29,6 +29,20 @@ Asegurados
     └── ContactosSiniestros
 ```
 
+## Relaciones confirmadas
+
+### Asegurados → ContactosAsegurados
+
+```text
+Asegurados::_kp_ID_Asegurado
+        =
+ContactosAsegurados::_kf_ID_Asegurado
+```
+
+- Clave primaria de `Asegurados`: `_kp_ID_Asegurado`.
+- Clave primaria de `ContactosAsegurados`: `_kp_ID_ContactoAseg`.
+- Clave foránea en `ContactosAsegurados` hacia `Asegurados`: `_kf_ID_Asegurado`.
+
 ## Campos clave para la interfaz web
 
 ### Asegurados
@@ -45,7 +59,7 @@ Asegurados
 ### ContactosAsegurados
 
 - `_kp_ID_ContactoAseg`: clave primaria.
-- `_kf_ID_Asegurado`: clave foránea al asegurado.
+- `_kf_ID_Asegurado`: clave foránea al asegurado; se relaciona con `Asegurados::_kp_ID_Asegurado`.
 - `Nombre`, `NombreCompleto`.
 - `Telefono`, `Telefono2`, `Fax`, `Movil`, `Mail`.
 - `Cargo`, `Notas`.
@@ -102,6 +116,7 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
    - `NIF` / `NIFAsegurado`,
    - número de póliza `NumeroPoliza`.
 4. Para la fase documental conviene añadir o mapear una tabla específica de índice documental, porque los archivos no se guardan como contenedores en FileMaker.
+5. Para cargar contactos del asegurado desde la web se debe obtener primero `_kp_ID_Asegurado` del asegurado vinculado y luego buscar en `ContactosAsegurados::_kf_ID_Asegurado`.
 
 ## Pendiente de ampliar
 
