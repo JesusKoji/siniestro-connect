@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Asegurado, Siniestro } from "@/data/siniestros";
-import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso, obtenerAsegurado } from "@/lib/filemaker";
+import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso, obtenerAsegurado, obtenerDetalleSiniestro } from "@/lib/filemaker";
 import {
   Building2,
   Calendar,
@@ -26,6 +26,7 @@ export const DesktopApp = () => {
   const [autenticado, setAutenticado] = useState(false);
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
+  const [detalleSiniestro, setDetalleSiniestro] = useState<Siniestro | null>(null);
   const [asegurado, setAsegurado] = useState<Asegurado | null>(null);
   const [query, setQuery] = useState("");
   const [movil, setMovil] = useState("");
@@ -52,18 +53,25 @@ export const DesktopApp = () => {
   useEffect(() => {
     setMovil("");
     setAsegurado(null);
+    setDetalleSiniestro(null);
 
-    if (!seleccionado?.idAsegurado) return;
+    if (!seleccionado) return;
 
     setLoadingAsegurado(true);
-    obtenerAsegurado(seleccionado.idAsegurado)
-      .then(setAsegurado)
+    obtenerDetalleSiniestro(seleccionado)
+      .then(async (detalle) => {
+        setDetalleSiniestro(detalle);
+        const datosAsegurado = await obtenerAsegurado(detalle.idAsegurado);
+        setAsegurado(datosAsegurado);
+      })
       .catch((error) => {
         const msg = error instanceof Error ? error.message : "No se pudo cargar el asegurado";
         toast.error(msg);
       })
       .finally(() => setLoadingAsegurado(false));
-  }, [seleccionado?.id, seleccionado?.idAsegurado]);
+  }, [seleccionado]);
+
+  const siniestroActivo = detalleSiniestro ?? seleccionado;
 
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -77,10 +85,10 @@ export const DesktopApp = () => {
   }, [siniestros, query]);
 
   const enviarEnlace = async () => {
-    if (!seleccionado) return;
+    if (!siniestroActivo) return;
     setEnviando(true);
     try {
-      const result = await ejecutarScriptEnviarEnlace(seleccionado.numero, movil);
+      const result = await ejecutarScriptEnviarEnlace(siniestroActivo.numero, movil);
       const abierto = abrirWhatsApp(result);
       toast.success(abierto ? "Abriendo WhatsApp" : "Enlace generado correctamente");
     } catch (err) {
@@ -96,6 +104,7 @@ export const DesktopApp = () => {
     setAutenticado(false);
     setSiniestros([]);
     setSeleccionado(null);
+    setDetalleSiniestro(null);
     setAsegurado(null);
     setQuery("");
     setMovil("");
@@ -184,14 +193,14 @@ export const DesktopApp = () => {
         </section>
 
         <section className="min-h-[640px] rounded-3xl border border-border/60 bg-card shadow-soft">
-          {seleccionado ? (
+          {siniestroActivo ? (
             <div className="flex h-full flex-col">
               <div className="gradient-hero rounded-t-3xl p-8 text-primary-foreground">
                 <p className="text-xs uppercase tracking-widest text-primary-foreground/70">Expediente</p>
                 <div className="mt-2 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
                   <div>
-                    <h2 className="text-4xl font-bold">{seleccionado.numero}</h2>
-                    <p className="mt-1 text-primary-foreground/80">{seleccionado.compania}</p>
+                    <h2 className="text-4xl font-bold">{siniestroActivo.numero}</h2>
+                    <p className="mt-1 text-primary-foreground/80">{siniestroActivo.compania}</p>
                   </div>
                   <div className="w-full rounded-2xl bg-white/10 p-4 backdrop-blur-sm xl:w-96">
                     <Label htmlFor="desktop-movil" className="text-xs font-medium text-primary-foreground/80">
@@ -230,14 +239,14 @@ export const DesktopApp = () => {
 
               <div className="space-y-4 p-6">
                 <div className="grid gap-4 xl:grid-cols-2">
-                  <DetailCard icon={User} label="Asegurado" value={seleccionado.asegurado} />
-                  <DetailCard icon={Building2} label="Compañía" value={seleccionado.compania} />
-                  <DetailCard icon={MapPin} label="Dirección riesgo" value={seleccionado.direccion} />
-                  <DetailCard icon={Tag} label="Tipo" value={seleccionado.tipo} />
+                  <DetailCard icon={User} label="Asegurado" value={siniestroActivo.asegurado} />
+                  <DetailCard icon={Building2} label="Compañía" value={siniestroActivo.compania} />
+                  <DetailCard icon={MapPin} label="Dirección riesgo" value={siniestroActivo.direccion} />
+                  <DetailCard icon={Tag} label="Tipo" value={siniestroActivo.tipo} />
                   <DetailCard
                     icon={Calendar}
                     label="Fecha apertura"
-                    value={new Date(seleccionado.fechaApertura).toLocaleDateString("es-ES", {
+                    value={new Date(siniestroActivo.fechaApertura).toLocaleDateString("es-ES", {
                       day: "2-digit",
                       month: "long",
                       year: "numeric",
