@@ -43,7 +43,7 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
               Bienvenido
             </h1>
             <p className="text-sm text-muted-foreground mb-6">
-              Accede a tus siniestros en curso
+              Accede a la gestión de tus siniestros
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
