@@ -102,12 +102,17 @@ ContactosSiniestros::_kf_ID_Siniestro
 
 - `_kp_ID_Asegurado`: clave primaria textual del asegurado.
 - `_kp_ID_Aseg_UUIDNumber`: identificador UUIDNumber.
-- `Nombre`, `Apellido1`, `Apellido2`, `NombreCompleto`, `Apellidos`, `RazonSocial`.
-- `is_CIF`, `not_CIF`, `NIF`.
-- `Via`, `Direccion`, `DireccCompleta`, `NumeroCalle`, `Bloque`, `Escalera`, `Planta`, `Puerta`, `CodPostal`, `Poblacion`, `Provincia`, `Comunidad`, `Pais`.
-- `latitud`, `longitud`, `CoordenadasGMS`.
-- `email`, `Telefono`.
-- `Is_ClientePrivado`, `Is_Retencion`, `TipoAseg`.
+- Identificación fiscal: `NIF` se usa para CIF/NIF.
+- Tipo de persona: hay opción para seleccionar persona física o jurídica.
+- Persona física: `Nombre`, `Apellido1`, `Apellido2`, `NombreCompleto`, `Apellidos`.
+- Persona jurídica/empresa: `RazonSocial`.
+- Indicadores auxiliares: `is_CIF`, `not_CIF`.
+- Dirección normalizada con Google Maps: tipo de vía, nombre de vía, número, población, provincia y código postal.
+- Campos de dirección: `Via`, `Direccion`, `DireccCompleta`, `NumeroCalle`, `Bloque`, `Escalera`, `Planta`, `Puerta`, `CodPostal`, `Poblacion`, `Provincia`, `Comunidad`, `Pais`.
+- Coordenadas: `latitud`, `longitud`, `CoordenadasGMS`.
+- Contacto básico: `email`, `Telefono`.
+- Relacionados mostrados en layout: contactos, pólizas y siniestros del asegurado.
+- Otros: `Is_ClientePrivado`, `Is_Retencion`, `TipoAseg`.
 
 ### ContactosAsegurados
 
@@ -179,6 +184,7 @@ Tabla principal operativa. El DDR parcial incluye 335 campos. Campos especialmen
 8. Para cargar la póliza concreta del siniestro se debe usar `Siniestros::_kf_ID_Poliza` contra `Polizas::_kp_ID_Poliza`.
 9. Los layouts API disponibles permiten cargar estos módulos de forma separada desde la web usando la Data API.
 10. Siguiente fase web recomendada: al seleccionar un siniestro, cargar el registro completo desde `API_Siniestros` y usar sus claves para cargar `API_ContactosSiniestros`, `API_Asegurados`, `API_Polizas` y `API_ContactosAsegurado`.
+11. En la interfaz web de asegurado conviene reproducir la lógica de FileMaker: identificación fiscal, tipo persona, nombre/razón social, dirección normalizada, contactos, pólizas y siniestros relacionados.
 
 ## Pendiente de ampliar
 
