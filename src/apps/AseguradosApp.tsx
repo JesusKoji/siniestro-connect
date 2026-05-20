@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Asegurado, ContactoAsegurado, Poliza, Siniestro } from "@/data/siniestros";
+import { normalizarDireccion } from "@/lib/geocode";
 import {
   actualizarAsegurado,
   buscarAsegurados,
@@ -18,11 +19,13 @@ import {
   FileText,
   Loader2,
   Mail,
+  MapPin,
   Phone,
   Plus,
   Save,
   Search,
   ShieldCheck,
+  Sparkles,
   Trash2,
   UserRound,
   X,
@@ -139,6 +142,10 @@ export const AseguradosApp = () => {
     setFormData((actual) => ({ ...actual, [campo]: valor }));
   };
 
+  const aplicarDireccionNormalizada = (data: Partial<Asegurado>) => {
+    setFormData((actual) => ({ ...actual, ...data }));
+  };
+
   const guardarAsegurado = async (event: React.FormEvent) => {
     event.preventDefault();
     const esJuridica = formData.tipoPersona.toLowerCase().includes("jur");
@@ -225,7 +232,7 @@ export const AseguradosApp = () => {
 
       <section className="mt-6 rounded-3xl border border-border/60 bg-card shadow-soft">
         {modo === "nuevo" || modo === "edicion" ? (
-          <AseguradoEditor modo={modo} asegurado={formData} guardando={guardando} onChange={actualizarCampo} onSubmit={guardarAsegurado} onCancel={cancelarEdicion} />
+          <AseguradoEditor modo={modo} asegurado={formData} guardando={guardando} onChange={actualizarCampo} onSubmit={guardarAsegurado} onCancel={cancelarEdicion} onApplyNormalizedAddress={aplicarDireccionNormalizada} />
         ) : seleccionado ? (
           <div className="space-y-4 p-6">
             <AseguradoCard asegurado={seleccionado} />
@@ -250,10 +257,35 @@ export const AseguradosApp = () => {
   );
 };
 
-type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guardando: boolean; onChange: (campo: keyof Asegurado, valor: string) => void; onSubmit: (event: React.FormEvent) => void; onCancel: () => void; };
+type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guardando: boolean; onChange: (campo: keyof Asegurado, valor: string) => void; onSubmit: (event: React.FormEvent) => void; onCancel: () => void; onApplyNormalizedAddress: (data: Partial<Asegurado>) => void; };
 
-const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel }: AseguradoEditorProps) => {
+const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel, onApplyNormalizedAddress }: AseguradoEditorProps) => {
   const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur");
+  const [direccionLibre, setDireccionLibre] = useState("");
+  const [normalizando, setNormalizando] = useState(false);
+
+  const ejecutarNormalizacion = async () => {
+    setNormalizando(true);
+    try {
+      const data = await normalizarDireccion(direccionLibre || [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia].filter(Boolean).join(" "));
+      onApplyNormalizedAddress({
+        via: data.via,
+        direccion: data.direccion,
+        numeroCalle: data.numeroCalle,
+        codigoPostal: data.codigoPostal,
+        poblacion: data.poblacion,
+        provincia: data.provincia,
+        pais: data.pais,
+        direccionCompleta: data.direccionCompleta,
+      });
+      toast.success("Dirección normalizada con Google Maps");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo normalizar la dirección");
+    } finally {
+      setNormalizando(false);
+    }
+  };
+
   return (
     <form onSubmit={onSubmit} className="space-y-5 p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -267,14 +299,27 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
         <Field label="Email" value={asegurado.email} onChange={(v) => onChange("email", v)} />
         {esJuridica ? <Field label="Razón social" value={asegurado.razonSocial} onChange={(v) => onChange("razonSocial", v)} required className="xl:col-span-2" /> : <><Field label="Nombre" value={asegurado.nombre} onChange={(v) => onChange("nombre", v)} required /><Field label="Primer apellido" value={asegurado.apellido1} onChange={(v) => onChange("apellido1", v)} /><Field label="Segundo apellido" value={asegurado.apellido2} onChange={(v) => onChange("apellido2", v)} /></>}
       </div>
-      <div className="grid gap-4 rounded-3xl border border-border/60 bg-background/70 p-5 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
-        <Field label="Nombre vía / dirección" value={asegurado.direccion} onChange={(v) => onChange("direccion", v)} className="xl:col-span-2" />
-        <Field label="Número" value={asegurado.numeroCalle} onChange={(v) => onChange("numeroCalle", v)} />
-        <Field label="Código postal" value={asegurado.codigoPostal} onChange={(v) => onChange("codigoPostal", v)} />
-        <Field label="Población" value={asegurado.poblacion} onChange={(v) => onChange("poblacion", v)} />
-        <Field label="Provincia" value={asegurado.provincia} onChange={(v) => onChange("provincia", v)} />
-        <Field label="País" value={asegurado.pais} onChange={(v) => onChange("pais", v)} />
+      <div className="space-y-4 rounded-3xl border border-border/60 bg-background/70 p-5">
+        <div className="rounded-2xl border border-dashed border-border/80 bg-card p-4">
+          <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div>
+          <div className="mt-3 flex flex-col gap-2 lg:flex-row">
+            <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Calle Colón 25, Valencia" className="h-11 rounded-xl" />
+            <Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">
+              {normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Normalizar
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Se aplicará la propuesta a los campos de dirección antes de guardar.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
+          <Field label="Nombre vía / dirección" value={asegurado.direccion} onChange={(v) => onChange("direccion", v)} className="xl:col-span-2" />
+          <Field label="Número" value={asegurado.numeroCalle} onChange={(v) => onChange("numeroCalle", v)} />
+          <Field label="Código postal" value={asegurado.codigoPostal} onChange={(v) => onChange("codigoPostal", v)} />
+          <Field label="Población" value={asegurado.poblacion} onChange={(v) => onChange("poblacion", v)} />
+          <Field label="Provincia" value={asegurado.provincia} onChange={(v) => onChange("provincia", v)} />
+          <Field label="País" value={asegurado.pais} onChange={(v) => onChange("pais", v)} />
+        </div>
       </div>
     </form>
   );
