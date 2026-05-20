@@ -4,12 +4,13 @@
  * La app puede trabajar en modo mock o contra FileMaker real usando variables de entorno Vite.
  * En desarrollo crea un .env.local basado en .env.example.
  */
-import { Siniestro, siniestrosMock } from "@/data/siniestros";
+import { Asegurado, aseguradoMock, Siniestro, siniestrosMock } from "@/data/siniestros";
 
 export const FM_CONFIG = {
   host: import.meta.env.VITE_FM_HOST ?? "", // ej: "https://localhost" o vacío para mismo origen
   database: import.meta.env.VITE_FM_DATABASE ?? "GestionPericial",
   layout: import.meta.env.VITE_FM_LAYOUT ?? "API_EnlacesSiniestros",
+  layoutAsegurados: import.meta.env.VITE_FM_LAYOUT_ASEGURADOS ?? "API_Asegurados",
   scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "SMS",
   filtroEnCursoCampo: import.meta.env.VITE_FM_FILTRO_EN_CURSO_CAMPO ?? "FechaCierre",
   filtroEnCursoValor: import.meta.env.VITE_FM_FILTRO_EN_CURSO_VALOR ?? "=",
@@ -163,6 +164,9 @@ function mapearSiniestro(record: FileMakerRecord): Siniestro {
   const fieldData = record.fieldData;
   return {
     id: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]) || record.recordId,
+    idSiniestro: getFirstValue(fieldData, ["_kp_ID_Siniestro", "id"]),
+    idAsegurado: fieldData._kf_ID_Asegurado ?? "",
+    idPoliza: fieldData._kf_ID_Poliza ?? "",
     numero: fieldData.NumeroSiniestro ?? "",
     compania: getFirstValue(fieldData, [
       "siniestros_polizas_COMPANIAS::Alias",
@@ -173,6 +177,78 @@ function mapearSiniestro(record: FileMakerRecord): Siniestro {
     direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
     fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo"]) || new Date().toISOString(),
     tipo: fieldData.TipoSiniestro ?? "",
+  };
+}
+
+export async function obtenerAsegurado(idAsegurado?: string): Promise<Asegurado | null> {
+  if (!idAsegurado) return null;
+
+  if (USE_MOCK) {
+    await wait(250);
+    return aseguradoMock;
+  }
+
+  const body = {
+    query: [{ _kp_ID_Asegurado: idAsegurado }],
+    limit: "1",
+  };
+
+  debug("Find asegurado", { layout: FM_CONFIG.layoutAsegurados, body });
+
+  const res = await fetch(
+    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutAsegurados}/_find`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  const data = await res.json().catch(() => null);
+  debug("Find asegurado response", data);
+
+  if (!res.ok) {
+    const code = data?.messages?.[0]?.code;
+    if (code === "401") return null;
+    throw new Error(getFileMakerErrorMessage(data) || "No se pudo cargar el asegurado");
+  }
+
+  const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
+  return record ? mapearAsegurado(record) : null;
+}
+
+function mapearAsegurado(record: FileMakerRecord): Asegurado {
+  const fieldData = record.fieldData;
+  const nombre = fieldData.Nombre ?? "";
+  const apellido1 = fieldData.Apellido1 ?? "";
+  const apellido2 = fieldData.Apellido2 ?? "";
+  const nombreCompleto = getFirstValue(fieldData, ["NombreCompleto", "Apellidos"]);
+  const razonSocial = fieldData.RazonSocial ?? "";
+  const displayName = razonSocial || nombreCompleto || [nombre, apellido1, apellido2].filter(Boolean).join(" ");
+
+  return {
+    id: fieldData._kp_ID_Asegurado || record.recordId,
+    nif: fieldData.NIF ?? "",
+    tipoPersona: getFirstValue(fieldData, ["TipoAseg", "TipoPersona"]),
+    nombre,
+    apellido1,
+    apellido2,
+    nombreCompleto,
+    razonSocial,
+    displayName,
+    via: fieldData.Via ?? "",
+    direccion: fieldData.Direccion ?? "",
+    numeroCalle: fieldData.NumeroCalle ?? "",
+    codigoPostal: fieldData.CodPostal ?? "",
+    poblacion: fieldData.Poblacion ?? "",
+    provincia: fieldData.Provincia ?? "",
+    pais: fieldData.Pais ?? "",
+    direccionCompleta: getFirstValue(fieldData, ["DireccCompleta", "DireccionCompleta"]),
+    email: fieldData.email ?? fieldData.Email ?? "",
+    telefono: fieldData.Telefono ?? "",
   };
 }
 
