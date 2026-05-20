@@ -29,6 +29,12 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
 
   const direccionNormalizada = [
     [asegurado.via, asegurado.direccion, asegurado.numeroCalle].filter(Boolean).join(" "),
+    [
+      asegurado.bloque ? `Bloque ${asegurado.bloque}` : "",
+      asegurado.escalera ? `Esc. ${asegurado.escalera}` : "",
+      asegurado.planta ? `Planta ${asegurado.planta}` : "",
+      asegurado.puerta ? `Puerta ${asegurado.puerta}` : "",
+    ].filter(Boolean).join(" "),
     [asegurado.codigoPostal, asegurado.poblacion].filter(Boolean).join(" "),
     asegurado.provincia,
     asegurado.pais,
