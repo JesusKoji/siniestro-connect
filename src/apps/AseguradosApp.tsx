@@ -47,6 +47,10 @@ const aseguradoVacio: Asegurado = {
   via: "",
   direccion: "",
   numeroCalle: "",
+  bloque: "",
+  escalera: "",
+  planta: "",
+  puerta: "",
   codigoPostal: "",
   poblacion: "",
   provincia: "",
@@ -110,7 +114,7 @@ export const AseguradosApp = () => {
 
   const seleccionarAsegurado = (asegurado: Asegurado) => {
     setSeleccionado(asegurado);
-    setFormData(asegurado);
+    setFormData({ ...aseguradoVacio, ...asegurado });
     setModo("vista");
     setMostrarResultados(false);
     cargarRelaciones(asegurado);
@@ -129,13 +133,13 @@ export const AseguradosApp = () => {
 
   const editarAsegurado = () => {
     if (!seleccionado) return;
-    setFormData(seleccionado);
+    setFormData({ ...aseguradoVacio, ...seleccionado });
     setModo("edicion");
   };
 
   const cancelarEdicion = () => {
     setModo("vista");
-    setFormData(seleccionado ?? aseguradoVacio);
+    setFormData(seleccionado ? { ...aseguradoVacio, ...seleccionado } : aseguradoVacio);
   };
 
   const actualizarCampo = (campo: keyof Asegurado, valor: string) => {
@@ -157,7 +161,7 @@ export const AseguradosApp = () => {
     try {
       const guardado = modo === "nuevo" ? await crearAsegurado(formData) : await actualizarAsegurado(formData);
       setSeleccionado(guardado);
-      setFormData(guardado);
+      setFormData({ ...aseguradoVacio, ...guardado });
       setModo("vista");
       cargarRelaciones(guardado);
       toast.success(modo === "nuevo" ? "Asegurado creado" : "Asegurado actualizado");
@@ -272,6 +276,10 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
         via: data.via,
         direccion: data.direccion,
         numeroCalle: data.numeroCalle,
+        bloque: data.bloque,
+        escalera: data.escalera,
+        planta: data.planta,
+        puerta: data.puerta,
         codigoPostal: data.codigoPostal,
         poblacion: data.poblacion,
         provincia: data.provincia,
@@ -303,18 +311,22 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
         <div className="rounded-2xl border border-dashed border-border/80 bg-card p-4">
           <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div>
           <div className="mt-3 flex flex-col gap-2 lg:flex-row">
-            <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Calle Colón 25, Valencia" className="h-11 rounded-xl" />
+            <Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Carrer de l'Escriptor Rafael Ferreres 12, Valencia" className="h-11 rounded-xl" />
             <Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">
               {normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Normalizar
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Se aplicará la propuesta a los campos de dirección antes de guardar.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Google Maps normaliza calle, número, población, provincia y código postal. Bloque, escalera, planta y puerta se completan manualmente.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} />
           <Field label="Nombre vía / dirección" value={asegurado.direccion} onChange={(v) => onChange("direccion", v)} className="xl:col-span-2" />
           <Field label="Número" value={asegurado.numeroCalle} onChange={(v) => onChange("numeroCalle", v)} />
+          <Field label="Bloque" value={asegurado.bloque} onChange={(v) => onChange("bloque", v)} />
+          <Field label="Escalera" value={asegurado.escalera} onChange={(v) => onChange("escalera", v)} />
+          <Field label="Planta" value={asegurado.planta} onChange={(v) => onChange("planta", v)} />
+          <Field label="Puerta" value={asegurado.puerta} onChange={(v) => onChange("puerta", v)} />
           <Field label="Código postal" value={asegurado.codigoPostal} onChange={(v) => onChange("codigoPostal", v)} />
           <Field label="Población" value={asegurado.poblacion} onChange={(v) => onChange("poblacion", v)} />
           <Field label="Provincia" value={asegurado.provincia} onChange={(v) => onChange("provincia", v)} />
@@ -326,7 +338,7 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
 };
 
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; className?: string; };
-const Field = ({ label, value, onChange, required = false, className = "" }: FieldProps) => <div className={`space-y-2 ${className}`}><Label>{label}</Label><Input value={value} onChange={(e) => onChange(e.target.value)} required={required} className="h-11 rounded-xl" /></div>;
+const Field = ({ label, value, onChange, required = false, className = "" }: FieldProps) => <div className={`space-y-2 ${className}`}><Label>{label}</Label><Input value={value || ""} onChange={(e) => onChange(e.target.value)} required={required} className="h-11 rounded-xl" /></div>;
 
 type RelatedSectionProps = { title: string; icon: typeof UserRound; loading: boolean; empty: string; isEmpty: boolean; children: ReactNode; };
 const RelatedSection = ({ title, icon: Icon, loading, empty, isEmpty, children }: RelatedSectionProps) => <section className="rounded-3xl border border-border/60 bg-card p-5"><div className="mb-4 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted"><Icon className="h-5 w-5 text-muted-foreground" /></div><h3 className="font-semibold">{title}</h3></div>{loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Cargando...</div> : isEmpty ? <p className="text-sm text-muted-foreground">{empty}</p> : children}</section>;
