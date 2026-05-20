@@ -11,6 +11,7 @@ type AddressComponent = {
 
 type GeocodeResult = {
   formatted_address?: string;
+  place_id?: string;
   address_components?: AddressComponent[];
   geometry?: {
     location?: {
@@ -25,6 +26,8 @@ type GoogleGeocodeResponse = {
   error_message?: string;
   results?: GeocodeResult[];
 };
+
+type NormalizedAddress = ReturnType<typeof normalizeGoogleResult>;
 
 function geocodePlugin(apiKey?: string): Plugin {
   return {
@@ -51,17 +54,17 @@ function geocodePlugin(apiKey?: string): Plugin {
 
           const geocodeResult = await geocodeWithRetries(q, apiKey);
 
-          if (!geocodeResult.result) {
+          if (geocodeResult.candidates.length === 0) {
             res.statusCode = 502;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ error: geocodeResult.error || "Google Maps no devolvió resultados" }));
             return;
           }
 
-          const normalized = normalizeGoogleResult(geocodeResult.result);
+          const first = geocodeResult.candidates[0];
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ ...normalized, consultaUsada: geocodeResult.query }));
+          res.end(JSON.stringify({ ...first, candidates: geocodeResult.candidates }));
         } catch (error) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json");
@@ -72,8 +75,10 @@ function geocodePlugin(apiKey?: string): Plugin {
   };
 }
 
-async function geocodeWithRetries(q: string, apiKey: string): Promise<{ result?: GeocodeResult; query?: string; error?: string }> {
+async function geocodeWithRetries(q: string, apiKey: string): Promise<{ candidates: NormalizedAddress[]; error?: string }> {
   const variants = buildQueryVariants(q);
+  const candidates: NormalizedAddress[] = [];
+  const seen = new Set<string>();
   let lastError = "";
 
   for (const query of variants) {
@@ -87,14 +92,23 @@ async function geocodeWithRetries(q: string, apiKey: string): Promise<{ result?:
     const googleRes = await fetch(googleUrl);
     const googleData = (await googleRes.json()) as GoogleGeocodeResponse;
 
-    if (googleRes.ok && googleData.status === "OK" && googleData.results?.[0]) {
-      return { result: googleData.results[0], query };
+    if (googleRes.ok && googleData.status === "OK" && googleData.results?.length) {
+      for (const result of googleData.results.slice(0, 5)) {
+        const normalized = { ...normalizeGoogleResult(result), consultaUsada: query };
+        const key = normalized.placeId || normalized.direccionCompleta || normalized.googleFormattedAddress;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          candidates.push(normalized);
+        }
+      }
+    } else {
+      lastError = googleData.error_message || `Google Maps no devolvió resultados: ${googleData.status || "sin estado"}`;
     }
 
-    lastError = googleData.error_message || `Google Maps no devolvió resultados: ${googleData.status || "sin estado"}`;
+    if (candidates.length >= 8) break;
   }
 
-  return { error: lastError };
+  return { candidates: candidates.slice(0, 8), error: lastError };
 }
 
 function buildQueryVariants(q: string) {
@@ -102,23 +116,58 @@ function buildQueryVariants(q: string) {
   const lower = clean.toLowerCase();
   const hasKnownType = /^(carrer|calle|avenida|avinguda|av\.?|passeig|paseo|plaza|plaça|camino|camí|carretera|ronda|travesía|travessera)\b/.test(lower);
   const hasValencia = /\b(valencia|valència)\b/.test(lower);
-  const suffix = hasValencia ? "" : ", Valencia";
+  const citySuffix = hasValencia ? "" : ", Valencia";
+  const parsed = splitLooseStreetNumber(clean);
 
   if (hasKnownType) {
-    return unique([clean, `${clean}${suffix}`, `${clean}, España`]);
+    return unique([clean, `${clean}${citySuffix}`, `${clean}, España`]);
   }
 
-  return unique([
+  const loose = [
     clean,
-    `${clean}${suffix}`,
-    `Avenida del Poeta ${clean}${suffix}`,
-    `Avinguda del Poeta ${clean}${suffix}`,
-    `Avenida ${clean}${suffix}`,
-    `Avinguda ${clean}${suffix}`,
-    `Calle ${clean}${suffix}`,
-    `Carrer ${clean}${suffix}`,
+    `${clean}${citySuffix}`,
     `${clean}, España`,
+    `Avenida ${clean}${citySuffix}`,
+    `Avinguda ${clean}${citySuffix}`,
+    `Calle ${clean}${citySuffix}`,
+    `Carrer ${clean}${citySuffix}`,
+  ];
+
+  if (!parsed) {
+    return unique([
+      ...loose,
+      `Avenida del Poeta ${clean}${citySuffix}`,
+      `Avinguda del Poeta ${clean}${citySuffix}`,
+    ]);
+  }
+
+  const { street, number, city } = parsed;
+  const suffix = city ? `, ${city}` : citySuffix;
+  return unique([
+    ...loose,
+    `${street}, ${number}${suffix}`,
+    `Avenida del Poeta ${street}, ${number}${suffix}`,
+    `Avinguda del Poeta ${street}, ${number}${suffix}`,
+    `Avenida Poeta ${street}, ${number}${suffix}`,
+    `Avinguda Poeta ${street}, ${number}${suffix}`,
+    `Avenida ${street}, ${number}${suffix}`,
+    `Avinguda ${street}, ${number}${suffix}`,
+    `Calle ${street}, ${number}${suffix}`,
+    `Carrer ${street}, ${number}${suffix}`,
   ]);
+}
+
+function splitLooseStreetNumber(q: string): { street: string; number: string; city: string } | null {
+  const normalized = q.trim().replace(/\s+/g, " ");
+  const cityMatch = normalized.match(/\b(valencia|valència)\b/i);
+  const city = cityMatch?.[0] || "Valencia";
+  const withoutCity = normalized.replace(/\b(valencia|valència)\b/gi, "").replace(/[, ]+$/g, "").trim();
+  const match = withoutCity.match(/^(.*?)(\d+[a-zA-Z]?)$/);
+  if (!match) return null;
+  const street = match[1].replace(/[, ]+$/g, "").trim();
+  const number = match[2].trim();
+  if (!street || !number) return null;
+  return { street, number, city };
 }
 
 function unique(values: string[]) {
@@ -155,6 +204,7 @@ function normalizeGoogleResult(result: GeocodeResult) {
     pais,
     direccionCompleta: buildNormalizedAddress({ via, direccion, numeroCalle, codigoPostal, poblacion, provincia, pais }),
     googleFormattedAddress: result.formatted_address || "",
+    placeId: result.place_id || "",
     latitud: location.lat !== undefined ? String(location.lat) : "",
     longitud: location.lng !== undefined ? String(location.lng) : "",
   };
