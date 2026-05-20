@@ -65,6 +65,7 @@ async function fmRequest(layout: string, path: string, init: RequestInit = {}) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
   });
   const data = await res.json().catch(() => null);
+  debug(`FM ${layout}${path}`, data);
   if (!res.ok) throw new Error(getFileMakerErrorMessage(data) || `Error FileMaker ${res.status}`);
   return data;
 }
@@ -239,43 +240,17 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
   const nombreCompleto = getFirstValue(f, ["NombreCompleto", "Apellidos"]);
   const razonSocial = f.RazonSocial ?? "";
   const displayName = razonSocial || nombreCompleto || [nombre, apellido1, apellido2].filter(Boolean).join(" ");
-  return {
-    id: f._kp_ID_Asegurado || record.recordId,
-    recordId: record.recordId,
-    nif: f.NIF ?? "",
-    tipoPersona: getFirstValue(f, ["TipoAseg", "TipoPersona"]),
-    nombre,
-    apellido1,
-    apellido2,
-    nombreCompleto,
-    razonSocial,
-    displayName,
-    via: f.Via ?? "",
-    direccion: f.Direccion ?? "",
-    numeroCalle: f.NumeroCalle ?? "",
-    bloque: f.Bloque ?? "",
-    escalera: f.Escalera ?? "",
-    planta: f.Planta ?? "",
-    puerta: f.Puerta ?? "",
-    codigoPostal: f.CodPostal ?? "",
-    poblacion: f.Poblacion ?? "",
-    provincia: f.Provincia ?? "",
-    pais: f.Pais ?? "",
-    direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]),
-    email: f.email ?? f.Email ?? "",
-    telefono: f.Telefono ?? "",
-  };
+  return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona: getFirstValue(f, ["TipoAseg", "TipoPersona"]), nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
 }
 
 function aseguradoToFieldData(a: Asegurado): Record<string, string> {
   return limpiarFieldData({ NIF: a.nif, TipoAseg: a.tipoPersona, Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
 }
 
-function contactoToFieldData(c: ContactoAsegurado, includeKeys: boolean): Record<string, string> {
+function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Record<string, string> {
   return limpiarFieldData({
-    ...(includeKeys ? { _kp_ID_ContactoAseg: c.id, _kf_ID_Asegurado: c.idAsegurado } : {}),
+    ...(includeRelation ? { _kf_ID_Asegurado: c.idAsegurado } : {}),
     Nombre: c.nombre,
-    NombreCompleto: c.nombreCompleto || calcularNombreContacto(c),
     Cargo: c.cargo,
     Telefono: c.telefono,
     Telefono2: c.telefono2,
