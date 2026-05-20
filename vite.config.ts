@@ -93,6 +93,10 @@ function normalizeGoogleResult(result: GeocodeResult) {
     via,
     direccion,
     numeroCalle,
+    bloque: "",
+    escalera: "",
+    planta: "",
+    puerta: "",
     codigoPostal,
     poblacion,
     provincia,
@@ -107,19 +111,38 @@ function splitSpanishRoute(route: string) {
   const clean = route.trim();
   const lower = clean.toLowerCase();
   const prefixes = [
+    ["carrer de", "Carrer"],
+    ["carrer del", "Carrer"],
+    ["carrer dels", "Carrer"],
+    ["carrer d'", "Carrer"],
+    ["carrer", "Carrer"],
+    ["calle de", "Calle"],
+    ["calle del", "Calle"],
     ["calle", "Calle"],
+    ["avinguda de", "Avinguda"],
     ["avinguda", "Avinguda"],
+    ["avenida de", "Avenida"],
     ["avenida", "Avenida"],
     ["av.", "Av."],
+    ["plaza de", "Plaza"],
     ["plaza", "Plaza"],
+    ["plaça de", "Plaça"],
     ["plaça", "Plaça"],
+    ["camino de", "Camino"],
     ["camino", "Camino"],
+    ["camí de", "Camí"],
     ["camí", "Camí"],
+    ["carretera de", "Carretera"],
     ["carretera", "Carretera"],
+    ["paseo de", "Paseo"],
     ["paseo", "Paseo"],
+    ["passeig de", "Passeig"],
     ["passeig", "Passeig"],
+    ["ronda de", "Ronda"],
     ["ronda", "Ronda"],
+    ["travesía de", "Travesía"],
     ["travesía", "Travesía"],
+    ["travessera de", "Travessera"],
     ["travessera", "Travessera"],
   ];
 
@@ -131,7 +154,6 @@ function splitSpanishRoute(route: string) {
   return { via: "", direccion: clean };
 }
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const fileMakerProxyTarget = env.VITE_DEV_FM_PROXY_TARGET || "https://localhost";
