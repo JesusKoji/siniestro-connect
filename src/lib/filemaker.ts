@@ -10,6 +10,7 @@ export const FM_CONFIG = {
   host: import.meta.env.VITE_FM_HOST ?? "", // ej: "https://localhost" o vacío para mismo origen
   database: import.meta.env.VITE_FM_DATABASE ?? "GestionPericial",
   layout: import.meta.env.VITE_FM_LAYOUT ?? "API_EnlacesSiniestros",
+  layoutSiniestros: import.meta.env.VITE_FM_LAYOUT_SINIESTROS ?? "API_Siniestros",
   layoutAsegurados: import.meta.env.VITE_FM_LAYOUT_ASEGURADOS ?? "API_Asegurados",
   scriptEnviarEnlace: import.meta.env.VITE_FM_SCRIPT_ENVIAR_ENLACE ?? "SMS",
   filtroEnCursoCampo: import.meta.env.VITE_FM_FILTRO_EN_CURSO_CAMPO ?? "FechaCierre",
@@ -175,9 +176,52 @@ function mapearSiniestro(record: FileMakerRecord): Siniestro {
     ]),
     asegurado: fieldData.Asegurado ?? getFirstValue(fieldData, ["NombreAseg", "RazonSocial", "NombreCompleto"]),
     direccion: fieldData.zVistaDireccionCrawfordEnLinea ?? getFirstValue(fieldData, ["DireccionCompleta", "DireccCompleta", "Direccion"]),
-    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo"]) || new Date().toISOString(),
+    fechaApertura: getFirstValue(fieldData, ["FechaApertura", "FechaAlta", "FechaEncargo", "FechaRecepcion"]) || new Date().toISOString(),
     tipo: fieldData.TipoSiniestro ?? "",
   };
+}
+
+export async function obtenerDetalleSiniestro(siniestro: Siniestro): Promise<Siniestro> {
+  if (siniestro.idAsegurado && siniestro.idPoliza) {
+    return siniestro;
+  }
+
+  if (USE_MOCK) {
+    await wait(200);
+    return siniestro;
+  }
+
+  const idSiniestro = siniestro.idSiniestro || siniestro.id;
+  const body = {
+    query: [{ _kp_ID_Siniestro: idSiniestro }],
+    limit: "1",
+  };
+
+  debug("Find detalle siniestro", { layout: FM_CONFIG.layoutSiniestros, body });
+
+  const res = await fetch(
+    `${FM_CONFIG.host}/fmi/data/vLatest/databases/${FM_CONFIG.database}/layouts/${FM_CONFIG.layoutSiniestros}/_find`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  const data = await res.json().catch(() => null);
+  debug("Find detalle siniestro response", data);
+
+  if (!res.ok) {
+    const code = data?.messages?.[0]?.code;
+    if (code === "401") return siniestro;
+    throw new Error(getFileMakerErrorMessage(data) || "No se pudo cargar el detalle del siniestro");
+  }
+
+  const record = data?.response?.data?.[0] as FileMakerRecord | undefined;
+  return record ? { ...siniestro, ...mapearSiniestro(record) } : siniestro;
 }
 
 export async function obtenerAsegurado(idAsegurado?: string): Promise<Asegurado | null> {
