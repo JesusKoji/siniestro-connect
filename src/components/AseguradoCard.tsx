@@ -82,9 +82,6 @@ export const AseguradoCard = ({ asegurado, loading = false }: AseguradoCardProps
             <p className="mt-1 font-semibold leading-snug">
               {direccionMapa || "-"}
             </p>
-            {asegurado.direccionCompleta && direccionNormalizada && asegurado.direccionCompleta !== direccionNormalizada ? (
-              <p className="mt-1 text-xs text-muted-foreground">Original: {asegurado.direccionCompleta}</p>
-            ) : null}
             {direccionMapa ? <p className="mt-2 text-xs font-medium text-accent">Ver en Google Maps</p> : null}
           </div>
         </div>
