@@ -58,13 +58,24 @@ export interface ContactoAsegurado {
 export interface Poliza {
   id: string;
   idAsegurado: string;
+  idRamo: string;
   numeroPoliza: string;
+  ramo: string;
+  tipoRamo: string;
   direccionCompleta: string;
+  fechaEfecto: string;
+  nSiniestros: string;
   poblacion: string;
   provincia: string;
   agente: string;
   telefonoAgente: string;
   emailAgente: string;
+}
+
+export interface Ramo {
+  id: string;
+  ramo: string;
+  tipoRamo: string;
 }
 
 export const aseguradoMock: Asegurado = {
@@ -116,8 +127,13 @@ export const polizasMock: Poliza[] = [
   {
     id: "POL-1",
     idAsegurado: "ASEG-1",
+    idRamo: "RAMO-1",
     numeroPoliza: "POL-2025-001",
+    ramo: "Hogar",
+    tipoRamo: "Multirriesgo",
     direccionCompleta: "C/ Mayor 23 · 28013 Madrid",
+    fechaEfecto: "01/01/2025",
+    nSiniestros: "3",
     poblacion: "Madrid",
     provincia: "Madrid",
     agente: "",
