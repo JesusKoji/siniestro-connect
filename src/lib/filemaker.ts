@@ -241,11 +241,11 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
   const razonSocial = f.RazonSocial ?? "";
   const displayName = razonSocial || nombreCompleto || [nombre, apellido1, apellido2].filter(Boolean).join(" ");
   const tipoPersona = tipoPersonaDesdeIsCIF(f.is_CIF, getFirstValue(f, ["TipoAseg", "TipoPersona"]));
-  return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona, nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
+  return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona, clientePrivado: normalizarBooleanoFM(f["Is:ClientePrivado"]), aplicaRetencion: normalizarBooleanoFM(f.Is_Retencion), nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
 }
 
 function aseguradoToFieldData(a: Asegurado): Record<string, string> {
-  return limpiarFieldData({ NIF: a.nif, is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
+  return limpiarFieldData({ NIF: a.nif, is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), "Is:ClientePrivado": a.clientePrivado === "1" ? "1" : "0", Is_Retencion: a.clientePrivado === "1" && a.aplicaRetencion === "1" ? "1" : "0", Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
 }
 
 function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Record<string, string> {
@@ -272,16 +272,20 @@ function isCIFDesdeTipoPersona(tipoPersona: string) {
   return tipoPersona.toLowerCase().includes("jur") ? "1" : "0";
 }
 
+function normalizarBooleanoFM(value: string | undefined) {
+  return String(value ?? "").trim() === "1" ? "1" : "0";
+}
+
 function limpiarFieldData(data: Record<string, string | undefined>) { return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Record<string, string>; }
 function calcularNombreCompleto(a: Asegurado) { return [a.nombre, a.apellido1, a.apellido2].filter(Boolean).join(" "); }
 function calcularDisplayName(a: Asegurado) { return a.razonSocial || a.nombreCompleto || calcularNombreCompleto(a); }
 function calcularNombreContacto(c: ContactoAsegurado) { return c.nombreCompleto || c.nombre; }
 function calcularDireccionCompleta(a: Asegurado) { return [[a.via, a.direccion, a.numeroCalle].filter(Boolean).join(" "), [a.bloque ? `Bloque ${a.bloque}` : "", a.escalera ? `Esc. ${a.escalera}` : "", a.planta ? `Planta ${a.planta}` : "", a.puerta ? `Puerta ${a.puerta}` : ""].filter(Boolean).join(" "), [a.codigoPostal, a.poblacion].filter(Boolean).join(" "), a.provincia, a.pais].filter(Boolean).join(" · "); }
-function completarAseguradoLocal(a: Asegurado): Asegurado { return { ...a, nombreCompleto: calcularNombreCompleto(a), displayName: calcularDisplayName(a), direccionCompleta: calcularDireccionCompleta(a) }; }
+function completarAseguradoLocal(a: Asegurado): Asegurado { return { ...a, nombreCompleto: calcularNombreCompleto(a), displayName: calcularDisplayName(a), direccionCompleta: calcularDireccionCompleta(a), aplicaRetencion: a.clientePrivado === "1" ? a.aplicaRetencion : "0" }; }
 
 function mapearContactoAsegurado(record: FileMakerRecord): ContactoAsegurado {
   const f = record.fieldData;
-  return { id: f._kp_ID_ContactoAseg || record.recordId, idAsegurado: f._kf_ID_Asegurado ?? "", nombre: f.Nombre ?? "", nombreCompleto: f.NombreCompleto ?? f.Nombre ?? "", cargo: f.Cargo ?? "", telefono: f.Telefono ?? "", telefono2: f.Telefono2 ?? "", movil: f.Movil ?? "", mail: f.Mail ?? f.email ?? "", notas: f.Notas ?? "", ...( { recordId: record.recordId } as object ) };
+  return { id: f._kp_ID_ContactoAseg || record.recordId, recordId: record.recordId, idAsegurado: f._kf_ID_Asegurado ?? "", nombre: f.Nombre ?? "", nombreCompleto: f.NombreCompleto ?? f.Nombre ?? "", cargo: f.Cargo ?? "", telefono: f.Telefono ?? "", telefono2: f.Telefono2 ?? "", movil: f.Movil ?? "", mail: f.Mail ?? f.email ?? "", notas: f.Notas ?? "" };
 }
 
 function mapearPoliza(record: FileMakerRecord): Poliza {
