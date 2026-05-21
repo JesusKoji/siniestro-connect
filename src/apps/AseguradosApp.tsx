@@ -105,26 +105,24 @@ export const AseguradosApp = () => {
 
 const PolizasRelacionadas = ({ polizas, loading }: { polizas: Poliza[]; loading: boolean }) => (
   <RelatedSection title="Pólizas relacionadas" icon={ShieldCheck} loading={loading} empty="Sin pólizas relacionadas" isEmpty={polizas.length === 0}>
-    <div className="space-y-3">
+    <div className="space-y-2">
       {polizas.map((p) => (
-        <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <div><p className="text-xs font-medium text-muted-foreground">Número de póliza</p><p className="font-semibold">{p.numeroPoliza || "-"}</p></div>
-            <div className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm"><span className="text-muted-foreground">Siniestros: </span><strong>{p.nSiniestros || "0"}</strong></div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+          <div className="grid items-start gap-3 md:grid-cols-[minmax(160px,1.2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(110px,0.8fr)_auto]">
+            <InfoMini label="Número póliza" value={p.numeroPoliza} />
             <InfoMini label="Ramo" value={p.ramo} />
             <InfoMini label="Tipo ramo" value={p.tipoRamo} />
             <InfoMini label="Fecha efecto" value={p.fechaEfecto} />
-            <InfoMini label="Dirección completa" value={p.direccionCompleta || [p.poblacion, p.provincia].filter(Boolean).join(" · ")} className="xl:col-span-1 md:col-span-2" />
+            <div className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm md:justify-self-end"><span className="text-muted-foreground">Siniestros: </span><strong>{p.nSiniestros || "0"}</strong></div>
           </div>
+          <p className="mt-2 truncate text-sm text-muted-foreground">{p.direccionCompleta || [p.poblacion, p.provincia].filter(Boolean).join(" · ") || "Sin dirección"}</p>
         </div>
       ))}
     </div>
   </RelatedSection>
 );
 
-const InfoMini = ({ label, value, className = "" }: { label: string; value?: string; className?: string }) => <div className={className}><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-sm font-semibold">{value || "-"}</p></div>;
+const InfoMini = ({ label, value, className = "" }: { label: string; value?: string; className?: string }) => <div className={className}><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 truncate text-sm font-semibold">{value || "-"}</p></div>;
 
 type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guardando: boolean; onChange: (campo: keyof Asegurado, valor: string) => void; onSubmit: (event: React.FormEvent) => void; onCancel: () => void; onApplyNormalizedAddress: (data: Partial<Asegurado>) => void; };
 const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel, onApplyNormalizedAddress }: AseguradoEditorProps) => {
