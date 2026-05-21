@@ -112,18 +112,29 @@ export async function buscarAsegurados(texto: string): Promise<Asegurado[]> {
 }
 
 export async function crearAsegurado(asegurado: Asegurado): Promise<Asegurado> {
-  const fieldData = aseguradoToFieldData(asegurado);
   if (USE_MOCK) { await wait(300); return completarAseguradoLocal({ ...asegurado, id: asegurado.id || `Asegurado_${Date.now()}`, recordId: `${Date.now()}` }); }
-  const data = await fmRequest(FM_CONFIG.layoutAsegurados, "/records", { method: "POST", body: JSON.stringify({ fieldData }) });
+  let data;
+  try {
+    data = await fmRequest(FM_CONFIG.layoutAsegurados, "/records", { method: "POST", body: JSON.stringify({ fieldData: aseguradoToFieldData(asegurado, true) }) });
+  } catch (error) {
+    if (!isFieldMissingError(error)) throw error;
+    console.warn("[FileMaker] Reintentando crear asegurado sin campos opcionales de cliente privado/retencion", error);
+    data = await fmRequest(FM_CONFIG.layoutAsegurados, "/records", { method: "POST", body: JSON.stringify({ fieldData: aseguradoToFieldData(asegurado, false) }) });
+  }
   const recordId = String(data?.response?.recordId ?? "");
   return (recordId ? await obtenerAseguradoPorRecordId(recordId) : null) ?? completarAseguradoLocal({ ...asegurado, recordId });
 }
 
 export async function actualizarAsegurado(asegurado: Asegurado): Promise<Asegurado> {
   if (!asegurado.recordId) throw new Error("No se puede actualizar: falta recordId del asegurado");
-  const fieldData = aseguradoToFieldData(asegurado);
   if (USE_MOCK) { await wait(300); return completarAseguradoLocal(asegurado); }
-  await fmRequest(FM_CONFIG.layoutAsegurados, `/records/${asegurado.recordId}`, { method: "PATCH", body: JSON.stringify({ fieldData }) });
+  try {
+    await fmRequest(FM_CONFIG.layoutAsegurados, `/records/${asegurado.recordId}`, { method: "PATCH", body: JSON.stringify({ fieldData: aseguradoToFieldData(asegurado, true) }) });
+  } catch (error) {
+    if (!isFieldMissingError(error)) throw error;
+    console.warn("[FileMaker] Reintentando guardar asegurado sin campos opcionales de cliente privado/retencion", error);
+    await fmRequest(FM_CONFIG.layoutAsegurados, `/records/${asegurado.recordId}`, { method: "PATCH", body: JSON.stringify({ fieldData: aseguradoToFieldData(asegurado, false) }) });
+  }
   return (await obtenerAseguradoPorRecordId(asegurado.recordId)) ?? completarAseguradoLocal(asegurado);
 }
 
@@ -244,8 +255,8 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
   return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona, clientePrivado: normalizarBooleanoFM(f["Is:ClientePrivado"]), aplicaRetencion: normalizarBooleanoFM(f.Is_Retencion), nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
 }
 
-function aseguradoToFieldData(a: Asegurado): Record<string, string> {
-  return limpiarFieldData({ NIF: a.nif, is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), "Is:ClientePrivado": a.clientePrivado === "1" ? "1" : "0", Is_Retencion: a.clientePrivado === "1" && a.aplicaRetencion === "1" ? "1" : "0", Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
+function aseguradoToFieldData(a: Asegurado, includeOptionalClientFields = true): Record<string, string> {
+  return limpiarFieldData({ NIF: a.nif, is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), ...(includeOptionalClientFields ? { "Is:ClientePrivado": a.clientePrivado === "1" ? "1" : "0", Is_Retencion: a.clientePrivado === "1" && a.aplicaRetencion === "1" ? "1" : "0" } : {}), Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
 }
 
 function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Record<string, string> {
@@ -268,14 +279,9 @@ function tipoPersonaDesdeIsCIF(isCIF: string | undefined, fallback = "") {
   return fallback || "Persona física";
 }
 
-function isCIFDesdeTipoPersona(tipoPersona: string) {
-  return tipoPersona.toLowerCase().includes("jur") ? "1" : "0";
-}
-
-function normalizarBooleanoFM(value: string | undefined) {
-  return String(value ?? "").trim() === "1" ? "1" : "0";
-}
-
+function isCIFDesdeTipoPersona(tipoPersona: string) { return tipoPersona.toLowerCase().includes("jur") ? "1" : "0"; }
+function normalizarBooleanoFM(value: string | undefined) { return String(value ?? "").trim() === "1" ? "1" : "0"; }
+function isFieldMissingError(error: unknown) { return error instanceof Error && (error.message.includes("102") || error.message.toLowerCase().includes("field is missing") || error.message.toLowerCase().includes("field missing") || error.message.toLowerCase().includes("file missing")); }
 function limpiarFieldData(data: Record<string, string | undefined>) { return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Record<string, string>; }
 function calcularNombreCompleto(a: Asegurado) { return [a.nombre, a.apellido1, a.apellido2].filter(Boolean).join(" "); }
 function calcularDisplayName(a: Asegurado) { return a.razonSocial || a.nombreCompleto || calcularNombreCompleto(a); }
