@@ -107,8 +107,9 @@
 
 @media (min-width: 768px) {
   .md\:grid-cols-\[minmax\(160px\2c 1\.2fr\)_minmax\(140px\2c 1fr\)_minmax\(140px\2c 1fr\)_minmax\(110px\2c 0\.8fr\)_auto\] {
-    grid-template-columns: 180px 120px 150px 115px max-content !important;
+    grid-template-columns: 180px 135px minmax(220px, 1fr) 135px max-content !important;
     column-gap: 0.75rem !important;
+    width: 100% !important;
   }
 }
 
