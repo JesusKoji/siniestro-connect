@@ -240,11 +240,12 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
   const nombreCompleto = getFirstValue(f, ["NombreCompleto", "Apellidos"]);
   const razonSocial = f.RazonSocial ?? "";
   const displayName = razonSocial || nombreCompleto || [nombre, apellido1, apellido2].filter(Boolean).join(" ");
-  return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona: getFirstValue(f, ["TipoAseg", "TipoPersona"]), nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
+  const tipoPersona = tipoPersonaDesdeIsCIF(f.is_CIF, getFirstValue(f, ["TipoAseg", "TipoPersona"]));
+  return { id: f._kp_ID_Asegurado || record.recordId, recordId: record.recordId, nif: f.NIF ?? "", tipoPersona, nombre, apellido1, apellido2, nombreCompleto, razonSocial, displayName, via: f.Via ?? "", direccion: f.Direccion ?? "", numeroCalle: f.NumeroCalle ?? "", bloque: f.Bloque ?? "", escalera: f.Escalera ?? "", planta: f.Planta ?? "", puerta: f.Puerta ?? "", codigoPostal: f.CodPostal ?? "", poblacion: f.Poblacion ?? "", provincia: f.Provincia ?? "", pais: f.Pais ?? "", direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]), email: f.email ?? f.Email ?? "", telefono: f.Telefono ?? "" };
 }
 
 function aseguradoToFieldData(a: Asegurado): Record<string, string> {
-  return limpiarFieldData({ NIF: a.nif, TipoAseg: a.tipoPersona, Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
+  return limpiarFieldData({ NIF: a.nif, is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), Nombre: a.nombre, Apellido1: a.apellido1, Apellido2: a.apellido2, RazonSocial: a.razonSocial, Via: a.via, Direccion: a.direccion, NumeroCalle: a.numeroCalle, Bloque: a.bloque, Escalera: a.escalera, Planta: a.planta, Puerta: a.puerta, CodPostal: a.codigoPostal, Poblacion: a.poblacion, Provincia: a.provincia, Pais: a.pais, email: a.email, Telefono: a.telefono });
 }
 
 function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Record<string, string> {
@@ -258,6 +259,17 @@ function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Re
     Mail: c.mail,
     Notas: c.notas,
   });
+}
+
+function tipoPersonaDesdeIsCIF(isCIF: string | undefined, fallback = "") {
+  const valor = String(isCIF ?? "").trim();
+  if (valor === "1") return "Persona jurídica";
+  if (valor === "0") return "Persona física";
+  return fallback || "Persona física";
+}
+
+function isCIFDesdeTipoPersona(tipoPersona: string) {
+  return tipoPersona.toLowerCase().includes("jur") ? "1" : "0";
 }
 
 function limpiarFieldData(data: Record<string, string | undefined>) { return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)) as Record<string, string>; }
