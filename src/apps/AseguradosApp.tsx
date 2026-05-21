@@ -6,21 +6,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Asegurado, ContactoAsegurado, Poliza, Siniestro } from "@/data/siniestros";
 import { DireccionNormalizada, normalizarDireccion } from "@/lib/geocode";
-import {
-  actualizarAsegurado,
-  buscarAsegurados,
-  crearAsegurado,
-  obtenerContactosAsegurado,
-  obtenerPolizasAsegurado,
-  obtenerSiniestrosAsegurado,
-} from "@/lib/filemaker";
-import { AlertTriangle, Building2, Edit3, FileText, Loader2, MapPin, Plus, Save, Search, ShieldCheck, Sparkles, Trash2, UserRound, X } from "lucide-react";
+import { actualizarAsegurado, buscarAsegurados, crearAsegurado, obtenerContactosAsegurado, obtenerPolizasAsegurado, obtenerSiniestrosAsegurado } from "@/lib/filemaker";
+import { AlertTriangle, Building2, ChevronDown, Edit3, FileText, Loader2, MapPin, Plus, Save, Search, ShieldCheck, Sparkles, Trash2, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 
 type ModoFormulario = "vista" | "nuevo" | "edicion";
 
 const aseguradoVacio: Asegurado = {
-  id: "", nif: "", tipoPersona: "Persona física", clientePrivado: "0", aplicaRetencion: "0", nombre: "", apellido1: "", apellido2: "", nombreCompleto: "", razonSocial: "", displayName: "", via: "", direccion: "", numeroCalle: "", bloque: "", escalera: "", planta: "", puerta: "", codigoPostal: "", poblacion: "", provincia: "", pais: "España", direccionCompleta: "", email: "", telefono: "",
+  id: "",
+  nif: "",
+  tipoPersona: "Persona física",
+  clientePrivado: "0",
+  aplicaRetencion: "0",
+  nombre: "",
+  apellido1: "",
+  apellido2: "",
+  nombreCompleto: "",
+  razonSocial: "",
+  displayName: "",
+  via: "",
+  direccion: "",
+  numeroCalle: "",
+  bloque: "",
+  escalera: "",
+  planta: "",
+  puerta: "",
+  codigoPostal: "",
+  poblacion: "",
+  provincia: "",
+  pais: "España",
+  direccionCompleta: "",
+  email: "",
+  telefono: "",
 };
 
 export const AseguradosApp = () => {
@@ -37,13 +54,27 @@ export const AseguradosApp = () => {
   const [loadingRelaciones, setLoadingRelaciones] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
+  const [polizasAbiertas, setPolizasAbiertas] = useState(false);
+  const [siniestrosAbiertos, setSiniestrosAbiertos] = useState(false);
 
   const cargarRelaciones = (asegurado: Asegurado) => {
-    setContactos([]); setPolizas([]); setSiniestros([]);
+    setContactos([]);
+    setPolizas([]);
+    setSiniestros([]);
+    setPolizasAbiertas(false);
+    setSiniestrosAbiertos(false);
     if (!asegurado.id) return;
     setLoadingRelaciones(true);
-    Promise.all([obtenerContactosAsegurado(asegurado.id), obtenerPolizasAsegurado(asegurado.id), obtenerSiniestrosAsegurado(asegurado.id)])
-      .then(([contactosData, polizasData, siniestrosData]) => { setContactos(contactosData); setPolizas(polizasData); setSiniestros(siniestrosData); })
+    Promise.all([
+      obtenerContactosAsegurado(asegurado.id),
+      obtenerPolizasAsegurado(asegurado.id),
+      obtenerSiniestrosAsegurado(asegurado.id),
+    ])
+      .then(([contactosData, polizasData, siniestrosData]) => {
+        setContactos(contactosData);
+        setPolizas(polizasData);
+        setSiniestros(siniestrosData);
+      })
       .catch((error) => toast.error(error instanceof Error ? error.message : "No se pudieron cargar los datos relacionados"))
       .finally(() => setLoadingRelaciones(false));
   };
@@ -52,15 +83,47 @@ export const AseguradosApp = () => {
     event.preventDefault();
     if (!query.trim()) return toast.error("Introduce un NIF, nombre, razón social o dirección para buscar");
     setLoadingBusqueda(true);
-    buscarAsegurados(query).then((data) => { setResultados(data); setMostrarResultados(true); if (data.length === 1) seleccionarAsegurado(data[0]); if (data.length === 0) toast.error("No se han encontrado asegurados"); })
+    buscarAsegurados(query)
+      .then((data) => {
+        setResultados(data);
+        setMostrarResultados(true);
+        if (data.length === 1) seleccionarAsegurado(data[0]);
+        if (data.length === 0) toast.error("No se han encontrado asegurados");
+      })
       .catch((error) => toast.error(error instanceof Error ? error.message : "No se pudieron cargar los asegurados"))
       .finally(() => setLoadingBusqueda(false));
   };
 
-  const seleccionarAsegurado = (asegurado: Asegurado) => { setSeleccionado(asegurado); setFormData({ ...aseguradoVacio, ...asegurado }); setModo("vista"); setMostrarResultados(false); cargarRelaciones(asegurado); };
-  const nuevoAsegurado = () => { setSeleccionado(null); setFormData({ ...aseguradoVacio, id: `Asegurado_${Date.now()}` }); setContactos([]); setPolizas([]); setSiniestros([]); setResultados([]); setMostrarResultados(false); setModo("nuevo"); };
-  const editarAsegurado = () => { if (!seleccionado) return; setFormData({ ...aseguradoVacio, ...seleccionado }); setModo("edicion"); };
-  const cancelarEdicion = () => { setModo("vista"); setFormData(seleccionado ? { ...aseguradoVacio, ...seleccionado } : aseguradoVacio); };
+  const seleccionarAsegurado = (asegurado: Asegurado) => {
+    setSeleccionado(asegurado);
+    setFormData({ ...aseguradoVacio, ...asegurado });
+    setModo("vista");
+    setMostrarResultados(false);
+    cargarRelaciones(asegurado);
+  };
+
+  const nuevoAsegurado = () => {
+    setSeleccionado(null);
+    setFormData({ ...aseguradoVacio, id: `Asegurado_${Date.now()}` });
+    setContactos([]);
+    setPolizas([]);
+    setSiniestros([]);
+    setResultados([]);
+    setMostrarResultados(false);
+    setModo("nuevo");
+  };
+
+  const editarAsegurado = () => {
+    if (!seleccionado) return;
+    setFormData({ ...aseguradoVacio, ...seleccionado });
+    setModo("edicion");
+  };
+
+  const cancelarEdicion = () => {
+    setModo("vista");
+    setFormData(seleccionado ? { ...aseguradoVacio, ...seleccionado } : aseguradoVacio);
+  };
+
   const actualizarCampo = (campo: keyof Asegurado, valor: string) => setFormData((actual) => ({ ...actual, [campo]: valor }));
   const aplicarDireccionNormalizada = (data: Partial<Asegurado>) => setFormData((actual) => ({ ...actual, ...data }));
   const recargarContactos = () => { if (seleccionado) cargarRelaciones(seleccionado); };
@@ -74,37 +137,87 @@ export const AseguradosApp = () => {
     setGuardando(true);
     try {
       const guardado = modo === "nuevo" ? await crearAsegurado(formData) : await actualizarAsegurado(formData);
-      setSeleccionado(guardado); setFormData({ ...aseguradoVacio, ...guardado }); setModo("vista"); cargarRelaciones(guardado);
+      setSeleccionado(guardado);
+      setFormData({ ...aseguradoVacio, ...guardado });
+      setModo("vista");
+      cargarRelaciones(guardado);
       toast.success(modo === "nuevo" ? "Asegurado creado" : "Asegurado actualizado");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo guardar el asegurado"); } finally { setGuardando(false); }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el asegurado");
+    } finally {
+      setGuardando(false);
+    }
   };
 
-  const borrarAsegurado = () => { if (!seleccionado) return; setConfirmarBorrado(true); };
-  const confirmarBorradoAsegurado = () => { setConfirmarBorrado(false); toast.error("Borrado pendiente de conectar con FileMaker. Antes activaremos la comprobación de pólizas y siniestros relacionados."); };
+  const borrarAsegurado = () => {
+    if (!seleccionado) return;
+    setConfirmarBorrado(true);
+  };
 
-  const resumen = useMemo(() => [{ label: "Contactos", value: contactos.length }, { label: "Pólizas", value: polizas.length }, { label: "Siniestros", value: siniestros.length }], [contactos.length, polizas.length, siniestros.length]);
+  const confirmarBorradoAsegurado = () => {
+    setConfirmarBorrado(false);
+    toast.error("Borrado pendiente de conectar con FileMaker. Antes activaremos la comprobación de pólizas y siniestros relacionados.");
+  };
+
+  const resumen = useMemo(() => [
+    { label: "Contactos", value: contactos.length },
+    { label: "Pólizas", value: polizas.length },
+    { label: "Siniestros", value: siniestros.length },
+  ], [contactos.length, polizas.length, siniestros.length]);
 
   return (
     <main className="mx-auto max-w-7xl px-8 py-8">
       <section className="rounded-3xl border border-border/60 bg-card p-5 shadow-soft">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div><h1 className="text-2xl font-bold">Ficha de asegurado</h1><p className="mt-1 text-sm text-muted-foreground">Busca un asegurado concreto o crea una nueva ficha.</p></div>
-          <div className="flex flex-wrap gap-2"><Button onClick={nuevoAsegurado} className="rounded-xl"><Plus className="mr-2 h-4 w-4" />Nuevo</Button><Button variant="outline" onClick={editarAsegurado} disabled={!seleccionado || modo !== "vista"} className="rounded-xl"><Edit3 className="mr-2 h-4 w-4" />Editar</Button><Button variant="outline" onClick={borrarAsegurado} disabled={!seleccionado || modo !== "vista"} className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Borrar</Button></div>
+          <div>
+            <h1 className="text-2xl font-bold">Ficha de asegurado</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Busca un asegurado concreto o crea una nueva ficha.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={nuevoAsegurado} className="rounded-xl"><Plus className="mr-2 h-4 w-4" />Nuevo</Button>
+            <Button variant="outline" onClick={editarAsegurado} disabled={!seleccionado || modo !== "vista"} className="rounded-xl"><Edit3 className="mr-2 h-4 w-4" />Editar</Button>
+            <Button variant="outline" onClick={borrarAsegurado} disabled={!seleccionado || modo !== "vista"} className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4" />Borrar</Button>
+          </div>
         </div>
-        <form onSubmit={buscar} className="mt-5 flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por NIF, nombre, razón social, población o dirección..." className="h-12 rounded-2xl border-border/60 bg-background pl-10" /></div><Button type="submit" disabled={loadingBusqueda} className="h-12 rounded-2xl px-6">{loadingBusqueda ? <Loader2 className="h-5 w-5 animate-spin" /> : "Buscar"}</Button></form>
-        {mostrarResultados ? <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-3"><div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Resultados de búsqueda</p><p className="text-xs text-muted-foreground">{resultados.length} coincidencias</p></div>{resultados.length === 0 ? <p className="text-sm text-muted-foreground">No se han encontrado asegurados.</p> : <div className="grid gap-2 xl:grid-cols-2">{resultados.map((a) => <button key={a.id} onClick={() => seleccionarAsegurado(a)} className="rounded-xl border border-border/60 bg-card p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"><div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold">{a.displayName || "Sin nombre"}</span><span className="shrink-0 text-xs text-muted-foreground">{a.nif || "Sin NIF"}</span></div><p className="mt-1 truncate text-xs text-muted-foreground">{a.direccionCompleta || [a.direccion, a.poblacion, a.provincia].filter(Boolean).join(" · ")}</p></button>)}</div>}</div> : null}
+        <form onSubmit={buscar} className="mt-5 flex flex-col gap-3 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por NIF, nombre, razón social, población o dirección..." className="h-12 rounded-2xl border-border/60 bg-background pl-10" />
+          </div>
+          <Button type="submit" disabled={loadingBusqueda} className="h-12 rounded-2xl px-6">{loadingBusqueda ? <Loader2 className="h-5 w-5 animate-spin" /> : "Buscar"}</Button>
+        </form>
+        {mostrarResultados ? (
+          <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Resultados de búsqueda</p><p className="text-xs text-muted-foreground">{resultados.length} coincidencias</p></div>
+            {resultados.length === 0 ? <p className="text-sm text-muted-foreground">No se han encontrado asegurados.</p> : <div className="grid gap-2 xl:grid-cols-2">{resultados.map((a) => <button key={a.id} onClick={() => seleccionarAsegurado(a)} className="rounded-xl border border-border/60 bg-card p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"><div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold">{a.displayName || "Sin nombre"}</span><span className="shrink-0 text-xs text-muted-foreground">{a.nif || "Sin NIF"}</span></div><p className="mt-1 truncate text-xs text-muted-foreground">{a.direccionCompleta || [a.direccion, a.poblacion, a.provincia].filter(Boolean).join(" · ")}</p></button>)}</div>}
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-6 rounded-3xl border border-border/60 bg-card shadow-soft">
-        {modo === "nuevo" || modo === "edicion" ? <AseguradoEditor modo={modo} asegurado={formData} guardando={guardando} onChange={actualizarCampo} onSubmit={guardarAsegurado} onCancel={cancelarEdicion} onApplyNormalizedAddress={aplicarDireccionNormalizada} /> : seleccionado ? <div className="space-y-4 p-6"><AseguradoCard asegurado={seleccionado} /><div className="grid gap-3 md:grid-cols-3">{resumen.map((item) => <div key={item.label} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-2xl font-bold">{loadingRelaciones ? "..." : item.value}</p></div>)}</div><ContactosAseguradoManager idAsegurado={seleccionado.id} contactos={contactos} loading={loadingRelaciones} onChanged={recargarContactos} /><PolizasRelacionadas polizas={polizas} loading={loadingRelaciones} /><RelatedSection title="Siniestros relacionados" icon={FileText} loading={loadingRelaciones} empty="Sin siniestros relacionados" isEmpty={siniestros.length === 0}><div className="space-y-3">{siniestros.map((s) => <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="font-semibold">{s.numero || "Sin número"}</p><p className="mt-1 text-sm text-muted-foreground">{s.tipo || "Sin tipo"}</p><p className="mt-1 text-xs text-muted-foreground">{s.direccion}</p></div>)}</div></RelatedSection></div> : <div className="flex min-h-[520px] items-center justify-center p-8 text-center text-muted-foreground"><div><Building2 className="mx-auto mb-4 h-12 w-12 opacity-40" /><p>Busca un asegurado o crea una nueva ficha.</p></div></div>}
+        {modo === "nuevo" || modo === "edicion" ? (
+          <AseguradoEditor modo={modo} asegurado={formData} guardando={guardando} onChange={actualizarCampo} onSubmit={guardarAsegurado} onCancel={cancelarEdicion} onApplyNormalizedAddress={aplicarDireccionNormalizada} />
+        ) : seleccionado ? (
+          <div className="space-y-4 p-6">
+            <AseguradoCard asegurado={seleccionado} />
+            <div className="grid gap-3 md:grid-cols-3">
+              {resumen.map((item) => <div key={item.label} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-2xl font-bold">{loadingRelaciones ? "..." : item.value}</p></div>)}
+            </div>
+            <ContactosAseguradoManager idAsegurado={seleccionado.id} contactos={contactos} loading={loadingRelaciones} onChanged={recargarContactos} />
+            <PolizasRelacionadas polizas={polizas} loading={loadingRelaciones} open={polizasAbiertas} onToggle={() => setPolizasAbiertas((v) => !v)} />
+            <SiniestrosRelacionados siniestros={siniestros} loading={loadingRelaciones} open={siniestrosAbiertos} onToggle={() => setSiniestrosAbiertos((v) => !v)} />
+          </div>
+        ) : (
+          <div className="flex min-h-[520px] items-center justify-center p-8 text-center text-muted-foreground"><div><Building2 className="mx-auto mb-4 h-12 w-12 opacity-40" /><p>Busca un asegurado o crea una nueva ficha.</p></div></div>
+        )}
       </section>
       {confirmarBorrado && seleccionado ? <ConfirmDeleteDialog asegurado={seleccionado} onCancel={() => setConfirmarBorrado(false)} onConfirm={confirmarBorradoAsegurado} /> : null}
     </main>
   );
 };
 
-const PolizasRelacionadas = ({ polizas, loading }: { polizas: Poliza[]; loading: boolean }) => (
-  <RelatedSection title="Pólizas relacionadas" icon={ShieldCheck} loading={loading} empty="Sin pólizas relacionadas" isEmpty={polizas.length === 0}>
+const PolizasRelacionadas = ({ polizas, loading, open, onToggle }: { polizas: Poliza[]; loading: boolean; open: boolean; onToggle: () => void }) => (
+  <CollapsibleSection title="Pólizas relacionadas" count={polizas.length} icon={ShieldCheck} loading={loading} empty="Sin pólizas relacionadas" open={open} onToggle={onToggle}>
     <div className="space-y-2">
       {polizas.map((p) => (
         <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
@@ -119,14 +232,34 @@ const PolizasRelacionadas = ({ polizas, loading }: { polizas: Poliza[]; loading:
         </div>
       ))}
     </div>
-  </RelatedSection>
+  </CollapsibleSection>
+);
+
+const SiniestrosRelacionados = ({ siniestros, loading, open, onToggle }: { siniestros: Siniestro[]; loading: boolean; open: boolean; onToggle: () => void }) => (
+  <CollapsibleSection title="Siniestros relacionados" count={siniestros.length} icon={FileText} loading={loading} empty="Sin siniestros relacionados" open={open} onToggle={onToggle}>
+    <div className="space-y-2">
+      {siniestros.map((s) => (
+        <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <p className="font-semibold">{s.numero || "Sin número"}</p>
+            <p className="text-sm text-muted-foreground">{s.tipo || "Sin tipo"}</p>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{s.direccion}</p>
+        </div>
+      ))}
+    </div>
+  </CollapsibleSection>
 );
 
 const InfoMini = ({ label, value, className = "" }: { label: string; value?: string; className?: string }) => <div className={className}><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 truncate text-sm font-semibold">{value || "-"}</p></div>;
 
 type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guardando: boolean; onChange: (campo: keyof Asegurado, valor: string) => void; onSubmit: (event: React.FormEvent) => void; onCancel: () => void; onApplyNormalizedAddress: (data: Partial<Asegurado>) => void; };
 const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel, onApplyNormalizedAddress }: AseguradoEditorProps) => {
-  const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur"); const esClientePrivado = asegurado.clientePrivado === "1"; const [direccionLibre, setDireccionLibre] = useState(buildDireccionLibre(asegurado)); const [normalizando, setNormalizando] = useState(false); const [candidatos, setCandidatos] = useState<DireccionNormalizada[]>([]);
+  const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur");
+  const esClientePrivado = asegurado.clientePrivado === "1";
+  const [direccionLibre, setDireccionLibre] = useState(buildDireccionLibre(asegurado));
+  const [normalizando, setNormalizando] = useState(false);
+  const [candidatos, setCandidatos] = useState<DireccionNormalizada[]>([]);
   useEffect(() => { setDireccionLibre(buildDireccionLibre(asegurado)); setCandidatos([]); }, [asegurado.id, asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]);
   const cambiarClientePrivado = (checked: boolean) => { onChange("clientePrivado", checked ? "1" : "0"); if (!checked) onChange("aplicaRetencion", "0"); };
   const aplicarCandidato = (data: DireccionNormalizada) => { onApplyNormalizedAddress({ via: data.via, direccion: data.direccion, numeroCalle: data.numeroCalle, bloque: data.bloque, escalera: data.escalera, planta: data.planta, puerta: data.puerta, codigoPostal: data.codigoPostal, poblacion: data.poblacion, provincia: data.provincia, pais: data.pais, direccionCompleta: data.direccionCompleta }); setDireccionLibre(data.direccionCompleta || data.googleFormattedAddress || buildDireccionLibre({ ...asegurado, ...data })); toast.success("Dirección aplicada"); };
@@ -135,11 +268,15 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
 };
 
 const buildDireccionLibre = (asegurado: Asegurado) => [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia].filter(Boolean).join(" ");
+
 type ConfirmDeleteDialogProps = { asegurado: Asegurado; onCancel: () => void; onConfirm: () => void; };
 const ConfirmDeleteDialog = ({ asegurado, onCancel, onConfirm }: ConfirmDeleteDialogProps) => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"><div className="w-full max-w-lg rounded-3xl border border-border/60 bg-card p-6 shadow-strong"><div className="flex gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-destructive/10"><AlertTriangle className="h-6 w-6 text-destructive" /></div><div><h2 className="text-xl font-bold">Confirmar borrado</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Se va a borrar el registro del asegurado <strong className="text-foreground">{asegurado.displayName || asegurado.nif || "seleccionado"}</strong>. Esta acción no debería realizarse si existen pólizas o siniestros relacionados.</p></div></div><div className="mt-6 flex justify-end gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl">Cancelar</Button><Button type="button" variant="destructive" onClick={onConfirm} className="rounded-xl"><Trash2 className="mr-2 h-4 w-4" />Confirmar borrado</Button></div></div></div>;
+
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; className?: string; };
 const Field = ({ label, value, onChange, required = false, className = "" }: FieldProps) => <div className={`space-y-2 ${className}`}><Label>{label}</Label><Input value={value || ""} onChange={(e) => onChange(e.target.value)} required={required} className="h-11 rounded-xl" /></div>;
+
 type ToggleFieldProps = { label: string; checked: boolean; onChange: (checked: boolean) => void; };
 const ToggleField = ({ label, checked, onChange }: ToggleFieldProps) => <label className="flex h-11 items-center gap-3 rounded-xl border border-input bg-background px-3 text-sm"><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4" /><span>{label}</span></label>;
-type RelatedSectionProps = { title: string; icon: typeof UserRound; loading: boolean; empty: string; isEmpty: boolean; children: ReactNode; };
-const RelatedSection = ({ title, icon: Icon, loading, empty, isEmpty, children }: RelatedSectionProps) => <section className="rounded-3xl border border-border/60 bg-card p-5"><div className="mb-4 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted"><Icon className="h-5 w-5 text-muted-foreground" /></div><h3 className="font-semibold">{title}</h3></div>{loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Cargando...</div> : isEmpty ? <p className="text-sm text-muted-foreground">{empty}</p> : children}</section>;
+
+type CollapsibleSectionProps = { title: string; count: number; icon: typeof UserRound; loading: boolean; empty: string; open: boolean; onToggle: () => void; children: ReactNode; };
+const CollapsibleSection = ({ title, count, icon: Icon, loading, empty, open, onToggle, children }: CollapsibleSectionProps) => <section className="rounded-3xl border border-border/60 bg-card p-4"><button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted"><Icon className="h-5 w-5 text-muted-foreground" /></div><div><h3 className="font-semibold">{title}</h3><p className="text-xs text-muted-foreground">{loading ? "Cargando..." : `${count} ${count === 1 ? "registro" : "registros"}`}</p></div></div><ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} /></button>{open ? <div className="mt-4">{loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Cargando...</div> : count === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : children}</div> : null}</section>;
