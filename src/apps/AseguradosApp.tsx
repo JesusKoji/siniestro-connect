@@ -38,6 +38,8 @@ const aseguradoVacio: Asegurado = {
   id: "",
   nif: "",
   tipoPersona: "Persona física",
+  clientePrivado: "0",
+  aplicaRetencion: "0",
   nombre: "",
   apellido1: "",
   apellido2: "",
@@ -277,6 +279,7 @@ type AseguradoEditorProps = { modo: ModoFormulario; asegurado: Asegurado; guarda
 
 const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCancel, onApplyNormalizedAddress }: AseguradoEditorProps) => {
   const esJuridica = asegurado.tipoPersona.toLowerCase().includes("jur");
+  const esClientePrivado = asegurado.clientePrivado === "1";
   const [direccionLibre, setDireccionLibre] = useState(buildDireccionLibre(asegurado));
   const [normalizando, setNormalizando] = useState(false);
   const [candidatos, setCandidatos] = useState<DireccionNormalizada[]>([]);
@@ -285,6 +288,11 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
     setDireccionLibre(buildDireccionLibre(asegurado));
     setCandidatos([]);
   }, [asegurado.id, asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia]);
+
+  const cambiarClientePrivado = (checked: boolean) => {
+    onChange("clientePrivado", checked ? "1" : "0");
+    if (!checked) onChange("aplicaRetencion", "0");
+  };
 
   const aplicarCandidato = (data: DireccionNormalizada) => {
     onApplyNormalizedAddress({ via: data.via, direccion: data.direccion, numeroCalle: data.numeroCalle, bloque: data.bloque, escalera: data.escalera, planta: data.planta, puerta: data.puerta, codigoPostal: data.codigoPostal, poblacion: data.poblacion, provincia: data.provincia, pais: data.pais, direccionCompleta: data.direccionCompleta });
@@ -320,6 +328,8 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
         <Field label="Teléfono" value={asegurado.telefono} onChange={(v) => onChange("telefono", v)} />
         <Field label="Email" value={asegurado.email} onChange={(v) => onChange("email", v)} />
         {esJuridica ? <Field label="Razón social" value={asegurado.razonSocial} onChange={(v) => onChange("razonSocial", v)} required className="xl:col-span-2" /> : <><Field label="Nombre" value={asegurado.nombre} onChange={(v) => onChange("nombre", v)} required /><Field label="Primer apellido" value={asegurado.apellido1} onChange={(v) => onChange("apellido1", v)} /><Field label="Segundo apellido" value={asegurado.apellido2} onChange={(v) => onChange("apellido2", v)} /></>}
+        <ToggleField label="Cliente privado" checked={esClientePrivado} onChange={cambiarClientePrivado} />
+        {esClientePrivado ? <ToggleField label="Aplica retención" checked={asegurado.aplicaRetencion === "1"} onChange={(checked) => onChange("aplicaRetencion", checked ? "1" : "0")} /> : null}
       </div>
       <div className="space-y-4 rounded-3xl border border-border/60 bg-background/70 p-5">
         <div className="rounded-2xl border border-dashed border-border/80 bg-card p-4">
@@ -358,6 +368,9 @@ const ConfirmDeleteDialog = ({ asegurado, onCancel, onConfirm }: ConfirmDeleteDi
 
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; required?: boolean; className?: string; };
 const Field = ({ label, value, onChange, required = false, className = "" }: FieldProps) => <div className={`space-y-2 ${className}`}><Label>{label}</Label><Input value={value || ""} onChange={(e) => onChange(e.target.value)} required={required} className="h-11 rounded-xl" /></div>;
+
+type ToggleFieldProps = { label: string; checked: boolean; onChange: (checked: boolean) => void; };
+const ToggleField = ({ label, checked, onChange }: ToggleFieldProps) => <label className="flex h-11 items-center gap-3 rounded-xl border border-input bg-background px-3 text-sm"><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4" /><span>{label}</span></label>;
 
 type RelatedSectionProps = { title: string; icon: typeof UserRound; loading: boolean; empty: string; isEmpty: boolean; children: ReactNode; };
 const RelatedSection = ({ title, icon: Icon, loading, empty, isEmpty, children }: RelatedSectionProps) => <section className="rounded-3xl border border-border/60 bg-card p-5"><div className="mb-4 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted"><Icon className="h-5 w-5 text-muted-foreground" /></div><h3 className="font-semibold">{title}</h3></div>{loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Cargando...</div> : isEmpty ? <p className="text-sm text-muted-foreground">{empty}</p> : children}</section>;
