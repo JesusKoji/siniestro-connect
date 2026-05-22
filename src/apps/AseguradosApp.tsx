@@ -240,11 +240,16 @@ const SiniestrosRelacionados = ({ siniestros, loading, open, onToggle }: { sinie
     <div className="space-y-2">
       {siniestros.map((s) => (
         <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-            <p className="font-semibold">{s.numero || "Sin número"}</p>
-            <p className="text-sm text-muted-foreground">{s.tipo || "Sin tipo"}</p>
+          <div className="grid items-start gap-3 md:grid-cols-[130px_120px_150px_minmax(180px,1fr)_150px_110px_115px_75px]">
+            <InfoMini label="Siniestro" value={s.numero} />
+            <InfoMini label="Ramo" value={s.ramo} />
+            <InfoMini label="Póliza" value={s.numeroPoliza} />
+            <InfoMini label="Dirección" value={s.direccion} />
+            <InfoMini label="Tipo siniestro" value={s.tipo} />
+            <InfoMini label="Cierre" value={s.fechaCierre} />
+            <InfoMini label="Valoración" value={s.valoracionTotal} />
+            <InfoMini label="Excluido" value={s.excluido === "1" ? "Sí" : "No"} />
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{s.direccion}</p>
         </div>
       ))}
     </div>
