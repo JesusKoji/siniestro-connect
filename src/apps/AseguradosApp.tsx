@@ -205,7 +205,7 @@ export const AseguradosApp = () => {
             </div>
             <ContactosAseguradoManager idAsegurado={seleccionado.id} contactos={contactos} loading={loadingRelaciones} onChanged={recargarContactos} />
             <PolizasRelacionadas polizas={polizas} loading={loadingRelaciones} open={polizasAbiertas} onToggle={() => setPolizasAbiertas((v) => !v)} />
-            <SiniestrosRelacionados siniestros={siniestros} loading={loadingRelaciones} open={siniestrosAbiertos} onToggle={() => setSiniestrosAbiertos((v) => !v)} />
+            <SiniestrosRelacionados siniestros={siniestros} polizas={polizas} loading={loadingRelaciones} open={siniestrosAbiertos} onToggle={() => setSiniestrosAbiertos((v) => !v)} />
           </div>
         ) : (
           <div className="flex min-h-[520px] items-center justify-center p-8 text-center text-muted-foreground"><div><Building2 className="mx-auto mb-4 h-12 w-12 opacity-40" /><p>Busca un asegurado o crea una nueva ficha.</p></div></div>
@@ -235,23 +235,27 @@ const PolizasRelacionadas = ({ polizas, loading, open, onToggle }: { polizas: Po
   </CollapsibleSection>
 );
 
-const SiniestrosRelacionados = ({ siniestros, loading, open, onToggle }: { siniestros: Siniestro[]; loading: boolean; open: boolean; onToggle: () => void }) => (
+const SiniestrosRelacionados = ({ siniestros, polizas, loading, open, onToggle }: { siniestros: Siniestro[]; polizas: Poliza[]; loading: boolean; open: boolean; onToggle: () => void }) => (
   <CollapsibleSection title="Siniestros relacionados" count={siniestros.length} icon={FileText} loading={loading} empty="Sin siniestros relacionados" open={open} onToggle={onToggle}>
     <div className="space-y-2">
-      {siniestros.map((s) => (
-        <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
-          <div className="grid items-start gap-3 md:grid-cols-[130px_120px_150px_minmax(180px,1fr)_150px_110px_115px_75px]">
-            <InfoMini label="Siniestro" value={s.numero} />
-            <InfoMini label="Ramo" value={s.ramo} />
-            <InfoMini label="Póliza" value={s.numeroPoliza} />
-            <InfoMini label="Dirección" value={s.direccion} />
-            <InfoMini label="Tipo siniestro" value={s.tipo} />
-            <InfoMini label="Cierre" value={s.fechaCierre} />
-            <InfoMini label="Valoración" value={s.valoracionTotal} />
-            <InfoMini label="Excluido" value={s.excluido === "1" ? "Sí" : "No"} />
+      {siniestros.map((s) => {
+        const polizaRelacionada = polizas.find((p) => p.id === s.idPoliza);
+        const numeroPoliza = s.numeroPoliza || polizaRelacionada?.numeroPoliza || s.idPoliza || "";
+        return (
+          <div key={s.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+            <div className="grid items-start gap-3 md:grid-cols-[130px_120px_150px_minmax(180px,1fr)_150px_110px_115px_75px]">
+              <InfoMini label="Siniestro" value={s.numero} />
+              <InfoMini label="Ramo" value={s.ramo || polizaRelacionada?.ramo} />
+              <InfoMini label="Póliza" value={numeroPoliza} />
+              <InfoMini label="Dirección" value={s.direccion} />
+              <InfoMini label="Tipo siniestro" value={s.tipo} />
+              <InfoMini label="Cierre" value={s.fechaCierre} />
+              <InfoMini label="Valoración" value={s.valoracionTotal} />
+              <InfoMini label="Excluido" value={s.excluido === "1" ? "Sí" : "No"} />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   </CollapsibleSection>
 );
