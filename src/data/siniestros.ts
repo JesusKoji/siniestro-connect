@@ -62,25 +62,49 @@ export interface ContactoAsegurado {
 
 export interface Poliza {
   id: string;
+  recordId?: string;
   idAsegurado: string;
   idRamo: string;
+  idCompania: string;
+  asegurado: string;
+  compania: string;
   numeroPoliza: string;
   ramo: string;
   tipoRamo: string;
   direccionCompleta: string;
-  fechaEfecto: string;
-  nSiniestros: string;
+  via: string;
+  direccion: string;
+  numeroCalle: string;
+  bloque: string;
+  escalera: string;
+  planta: string;
+  puerta: string;
+  codigoPostal: string;
   poblacion: string;
   provincia: string;
+  fechaEfecto: string;
+  nSiniestros: string;
   agente: string;
   telefonoAgente: string;
   emailAgente: string;
+  descripcion: string;
+  informacion: string;
+  comentarios: string;
 }
 
 export interface Ramo {
   id: string;
+  recordId?: string;
+  idCompania: string;
   ramo: string;
   tipoRamo: string;
+}
+
+export interface Compania {
+  id: string;
+  recordId?: string;
+  nombre: string;
+  alias: string;
 }
 
 export const aseguradoMock: Asegurado = {
@@ -116,8 +140,43 @@ export const contactosAseguradoMock: ContactoAsegurado[] = [
   { id: "CONT-1", recordId: "1", idAsegurado: "ASEG-1", nombre: "Antonio García", nombreCompleto: "Antonio García López", cargo: "Asegurado", telefono: "961000000", telefono2: "", movil: "600000000", mail: "antonio@example.com", notas: "" },
 ];
 
+export const companiasMock: Compania[] = [
+  { id: "CIA-1", recordId: "1", nombre: "Mapfre", alias: "Mapfre" },
+  { id: "CIA-2", recordId: "2", nombre: "Allianz", alias: "Allianz" },
+];
+
 export const polizasMock: Poliza[] = [
-  { id: "POL-1", idAsegurado: "ASEG-1", idRamo: "RAMO-1", numeroPoliza: "POL-2025-001", ramo: "Hogar", tipoRamo: "Multirriesgo", direccionCompleta: "C/ Mayor 23 · 28013 Madrid", fechaEfecto: "01/01/2025", nSiniestros: "3", poblacion: "Madrid", provincia: "Madrid", agente: "", telefonoAgente: "", emailAgente: "" },
+  {
+    id: "POL-1",
+    recordId: "1",
+    idAsegurado: "ASEG-1",
+    idRamo: "RAMO-1",
+    idCompania: "CIA-1",
+    asegurado: "Antonio García López",
+    compania: "Mapfre",
+    numeroPoliza: "POL-2025-001",
+    ramo: "Hogar",
+    tipoRamo: "Multirriesgo",
+    direccionCompleta: "C/ Mayor 23 · 28013 Madrid",
+    via: "C/",
+    direccion: "Mayor",
+    numeroCalle: "23",
+    bloque: "",
+    escalera: "",
+    planta: "4",
+    puerta: "B",
+    codigoPostal: "28013",
+    poblacion: "Madrid",
+    provincia: "Madrid",
+    fechaEfecto: "01/01/2025",
+    nSiniestros: "3",
+    agente: "Agente Demo",
+    telefonoAgente: "961000000",
+    emailAgente: "agente@example.com",
+    descripcion: "Vivienda principal asegurada.",
+    informacion: "Información general de la póliza.",
+    comentarios: "Sin comentarios.",
+  },
 ];
 
 export const siniestrosMock: Siniestro[] = [
