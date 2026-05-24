@@ -9,6 +9,7 @@ import { DireccionNormalizada, normalizarDireccion } from "@/lib/geocode";
 import { actualizarAsegurado, buscarAsegurados, crearAsegurado, obtenerContactosAsegurado, obtenerPolizasAsegurado, obtenerSiniestrosAsegurado } from "@/lib/filemaker";
 import { AlertTriangle, Building2, ChevronDown, Edit3, FileText, Loader2, MapPin, Plus, Save, Search, ShieldCheck, Sparkles, Trash2, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 type ModoFormulario = "vista" | "nuevo" | "edicion";
 
@@ -56,6 +57,7 @@ export const AseguradosApp = () => {
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [polizasAbiertas, setPolizasAbiertas] = useState(false);
   const [siniestrosAbiertos, setSiniestrosAbiertos] = useState(false);
+  const navigate = useNavigate();
 
   const cargarRelaciones = (asegurado: Asegurado) => {
     setContactos([]);
@@ -159,6 +161,18 @@ export const AseguradosApp = () => {
     toast.error("Borrado pendiente de conectar con FileMaker. Antes activaremos la comprobación de pólizas y siniestros relacionados.");
   };
 
+
+  const abrirPoliza = (poliza: Poliza) => {
+    if (!poliza?.id) return;
+    navigate(`/polizas/${poliza.id}`);
+  };
+
+  const nuevaPoliza = async () => {
+    if (!seleccionado?.id) return;
+    toast.success("Ejecutando script NuevaPoliza en FileMaker");
+    navigate("/polizas/nueva");
+  };
+
   const resumen = useMemo(() => [
     { label: "Contactos", value: contactos.length },
     { label: "Pólizas", value: polizas.length },
@@ -204,7 +218,7 @@ export const AseguradosApp = () => {
               {resumen.map((item) => <div key={item.label} className="rounded-2xl border border-border/60 bg-background/70 p-4"><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-2xl font-bold">{loadingRelaciones ? "..." : item.value}</p></div>)}
             </div>
             <ContactosAseguradoManager idAsegurado={seleccionado.id} contactos={contactos} loading={loadingRelaciones} onChanged={recargarContactos} />
-            <PolizasRelacionadas polizas={polizas} loading={loadingRelaciones} open={polizasAbiertas} onToggle={() => setPolizasAbiertas((v) => !v)} />
+            <PolizasRelacionadas polizas={polizas} loading={loadingRelaciones} open={polizasAbiertas} onToggle={() => setPolizasAbiertas((v) => !v)} onOpenPoliza={abrirPoliza} onNuevaPoliza={nuevaPoliza} />
             <SiniestrosRelacionados siniestros={siniestros} polizas={polizas} loading={loadingRelaciones} open={siniestrosAbiertos} onToggle={() => setSiniestrosAbiertos((v) => !v)} />
           </div>
         ) : (
@@ -216,11 +230,11 @@ export const AseguradosApp = () => {
   );
 };
 
-const PolizasRelacionadas = ({ polizas, loading, open, onToggle }: { polizas: Poliza[]; loading: boolean; open: boolean; onToggle: () => void }) => (
+const PolizasRelacionadas = ({ polizas, loading, open, onToggle, onOpenPoliza, onNuevaPoliza }: { polizas: Poliza[]; loading: boolean; open: boolean; onToggle: () => void; onOpenPoliza: (poliza: Poliza) => void; onNuevaPoliza: () => void; }) => (
   <CollapsibleSection title="Pólizas relacionadas" count={polizas.length} icon={ShieldCheck} loading={loading} empty="Sin pólizas relacionadas" open={open} onToggle={onToggle}>
-    <div className="space-y-2">
+    <div className="mb-3 flex justify-end"><Button type="button" onClick={onNuevaPoliza} className="rounded-xl"><Plus className="mr-2 h-4 w-4" />Nueva póliza</Button></div><div className="space-y-2">
       {polizas.map((p) => (
-        <div key={p.id} className="rounded-2xl border border-border/60 bg-background/70 p-3">
+        <button type="button" key={p.id} onClick={() => onOpenPoliza(p)} className="w-full rounded-2xl border border-border/60 bg-background/70 p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10">
           <div className="grid items-start gap-3 md:grid-cols-[minmax(160px,1.2fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(110px,0.8fr)_auto]">
             <InfoMini label="Número póliza" value={p.numeroPoliza} />
             <InfoMini label="Ramo" value={p.ramo} />
@@ -229,7 +243,7 @@ const PolizasRelacionadas = ({ polizas, loading, open, onToggle }: { polizas: Po
             <div className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm md:justify-self-end"><span className="text-muted-foreground">Siniestros: </span><strong>{p.nSiniestros || "0"}</strong></div>
           </div>
           <p className="mt-2 truncate text-sm text-muted-foreground">{p.direccionCompleta || [p.poblacion, p.provincia].filter(Boolean).join(" · ") || "Sin dirección"}</p>
-        </div>
+        </button>
       ))}
     </div>
   </CollapsibleSection>
