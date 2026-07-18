@@ -8,7 +8,7 @@ import { Loader2, User, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  onLogin: (usuario: string) => void;
 }
 
 export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
@@ -21,7 +21,7 @@ export const LoginScreen = ({ onLogin }: LoginScreenProps) => {
     setLoading(true);
     try {
       await autenticar(usuario, password);
-      onLogin();
+      onLogin(usuario.trim());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error de acceso";
       toast.error(msg);

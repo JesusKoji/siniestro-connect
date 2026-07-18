@@ -1,15 +1,16 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { AseguradoCard } from "@/components/AseguradoCard";
+import { CamposLocalidadEspana } from "@/components/CamposLocalidadEspana";
 import { ContactosAseguradoManager } from "@/components/ContactosAseguradoManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Asegurado, ContactoAsegurado, Poliza, Siniestro } from "@/data/siniestros";
 import { DireccionNormalizada, normalizarDireccion } from "@/lib/geocode";
-import { actualizarAsegurado, buscarAsegurados, crearAsegurado, obtenerContactosAsegurado, obtenerPolizasAsegurado, obtenerSiniestrosAsegurado } from "@/lib/filemaker";
+import { actualizarAsegurado, buscarAsegurados, crearAsegurado, obtenerAsegurado, obtenerContactosAsegurado, obtenerPolizasAsegurado, obtenerSiniestrosAsegurado } from "@/lib/filemaker";
 import { AlertTriangle, Building2, ChevronDown, Edit3, FileText, Loader2, MapPin, Plus, Save, Search, ShieldCheck, Sparkles, Trash2, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 type ModoFormulario = "vista" | "nuevo" | "edicion";
 
@@ -39,6 +40,7 @@ const aseguradoVacio: Asegurado = {
   direccionCompleta: "",
   email: "",
   telefono: "",
+  telefonoSecundario: "",
 };
 
 export const AseguradosApp = () => {
@@ -58,6 +60,46 @@ export const AseguradosApp = () => {
   const [polizasAbiertas, setPolizasAbiertas] = useState(false);
   const [siniestrosAbiertos, setSiniestrosAbiertos] = useState(false);
   const navigate = useNavigate();
+  const { id } = useParams();
+  useEffect(() => {
+    if (!id) return;
+
+    const cargarAseguradoPorId = async () => {
+      setLoadingRelaciones(true);
+
+      try {
+        const encontrado = await obtenerAsegurado(id);
+
+        if (!encontrado) {
+          toast.error("No se encontró el asegurado");
+          return;
+        }
+
+        setSeleccionado(encontrado);
+        setFormData({ ...aseguradoVacio, ...encontrado });
+        setModo("vista");
+        setMostrarResultados(false);
+
+        const [pols, sins, conts] = await Promise.all([
+          obtenerPolizasAsegurado(encontrado.id),
+          obtenerSiniestrosAsegurado(encontrado.id),
+          obtenerContactosAsegurado(encontrado.id),
+        ]);
+
+        setPolizas(pols);
+        setSiniestros(sins);
+        setContactos(conts);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo cargar el asegurado");
+      } finally {
+        setLoadingRelaciones(false);
+      }
+    };
+
+    cargarAseguradoPorId();
+  }, [id]);
+
+
 
   const cargarRelaciones = (asegurado: Asegurado) => {
     setContactos([]);
@@ -163,14 +205,17 @@ export const AseguradosApp = () => {
 
 
   const abrirPoliza = (poliza: Poliza) => {
-    if (!poliza?.id) return;
-    navigate(`/polizas/${poliza.id}`);
+    const polizaId = poliza?.id || poliza?.recordId;
+
+    if (!polizaId) return;
+
+    navigate(`/polizas/${encodeURIComponent(polizaId)}`);
   };
 
   const nuevaPoliza = async () => {
     if (!seleccionado?.id) return;
     toast.success("Ejecutando script NuevaPoliza en FileMaker");
-    navigate("/polizas/nueva");
+    navigate(`/polizas/nueva/${encodeURIComponent(seleccionado.id)}`);
   };
 
   const resumen = useMemo(() => [
@@ -184,7 +229,7 @@ export const AseguradosApp = () => {
       <section className="rounded-3xl border border-border/60 bg-card p-5 shadow-soft">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Ficha de asegurado</h1>
+            <h1 className="text-2xl font-bold">Asegurados</h1>
             <p className="mt-1 text-sm text-muted-foreground">Busca un asegurado concreto o crea una nueva ficha.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -287,7 +332,7 @@ const AseguradoEditor = ({ modo, asegurado, guardando, onChange, onSubmit, onCan
   const cambiarClientePrivado = (checked: boolean) => { onChange("clientePrivado", checked ? "1" : "0"); if (!checked) onChange("aplicaRetencion", "0"); };
   const aplicarCandidato = (data: DireccionNormalizada) => { onApplyNormalizedAddress({ via: data.via, direccion: data.direccion, numeroCalle: data.numeroCalle, bloque: data.bloque, escalera: data.escalera, planta: data.planta, puerta: data.puerta, codigoPostal: data.codigoPostal, poblacion: data.poblacion, provincia: data.provincia, pais: data.pais, direccionCompleta: data.direccionCompleta }); setDireccionLibre(data.direccionCompleta || data.googleFormattedAddress || buildDireccionLibre({ ...asegurado, ...data })); toast.success("Dirección aplicada"); };
   const ejecutarNormalizacion = async () => { setNormalizando(true); try { const data = await normalizarDireccion(direccionLibre); const lista = data.candidates?.length ? data.candidates : [data]; setCandidatos(lista); if (lista.length === 1) aplicarCandidato(lista[0]); else toast.success(`${lista.length} direcciones encontradas. Elige la correcta.`); } catch (error) { setCandidatos([]); toast.error(error instanceof Error ? error.message : "No se pudo normalizar la dirección"); } finally { setNormalizando(false); } };
-  return <form onSubmit={onSubmit} className="space-y-5 p-6"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h2 className="text-xl font-bold">{modo === "nuevo" ? "Nuevo asegurado" : "Editar asegurado"}</h2><p className="mt-1 text-sm text-muted-foreground">Completa los datos principales de identificación, contacto y dirección.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl"><X className="mr-2 h-4 w-4" />Cancelar</Button><Button type="submit" disabled={guardando} className="rounded-xl">{guardando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Guardar</Button></div></div><div className="grid gap-4 rounded-3xl border border-border/60 bg-background/70 p-5 md:grid-cols-2 xl:grid-cols-3"><Field label="CIF / NIF" value={asegurado.nif} onChange={(v) => onChange("nif", v)} required /><div className="space-y-2"><Label>Tipo persona</Label><select value={asegurado.tipoPersona} onChange={(e) => onChange("tipoPersona", e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"><option>Persona física</option><option>Persona jurídica</option></select></div><Field label="Teléfono" value={asegurado.telefono} onChange={(v) => onChange("telefono", v)} /><Field label="Email" value={asegurado.email} onChange={(v) => onChange("email", v)} />{esJuridica ? <Field label="Razón social" value={asegurado.razonSocial} onChange={(v) => onChange("razonSocial", v)} required className="xl:col-span-2" /> : <><Field label="Nombre" value={asegurado.nombre} onChange={(v) => onChange("nombre", v)} required /><Field label="Primer apellido" value={asegurado.apellido1} onChange={(v) => onChange("apellido1", v)} /><Field label="Segundo apellido" value={asegurado.apellido2} onChange={(v) => onChange("apellido2", v)} /></>}<ToggleField label="Cliente privado" checked={esClientePrivado} onChange={cambiarClientePrivado} />{esClientePrivado ? <ToggleField label="Aplica retención" checked={asegurado.aplicaRetencion === "1"} onChange={(checked) => onChange("aplicaRetencion", checked ? "1" : "0")} /> : null}</div><div className="space-y-4 rounded-3xl border border-border/60 bg-background/70 p-5"><div className="rounded-2xl border border-dashed border-border/80 bg-card p-4"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div><div className="mt-3 flex flex-col gap-2 lg:flex-row"><Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Federico García Lorca 87 Valencia" className="h-11 rounded-xl" /><Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">{normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Normalizar</Button></div><p className="mt-2 text-xs text-muted-foreground">Si hay varias coincidencias, selecciona la dirección correcta de la lista.</p>{candidatos.length > 1 ? <div className="mt-3 space-y-2"><p className="text-sm font-semibold">Direcciones encontradas</p>{candidatos.map((c, index) => <button key={c.placeId || `${c.direccionCompleta}-${index}`} type="button" onClick={() => aplicarCandidato(c)} className="w-full rounded-xl border border-border/60 bg-background p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"><p className="text-sm font-semibold">{c.direccionCompleta || c.googleFormattedAddress}</p>{c.googleFormattedAddress && c.googleFormattedAddress !== c.direccionCompleta ? <p className="mt-1 text-xs text-muted-foreground">{c.googleFormattedAddress}</p> : null}{c.consultaUsada ? <p className="mt-1 text-[11px] text-muted-foreground">Consulta usada: {c.consultaUsada}</p> : null}</button>)}</div> : null}</div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} /><Field label="Nombre vía / dirección" value={asegurado.direccion} onChange={(v) => onChange("direccion", v)} className="xl:col-span-2" /><Field label="Número" value={asegurado.numeroCalle} onChange={(v) => onChange("numeroCalle", v)} /><Field label="Bloque" value={asegurado.bloque} onChange={(v) => onChange("bloque", v)} /><Field label="Escalera" value={asegurado.escalera} onChange={(v) => onChange("escalera", v)} /><Field label="Planta" value={asegurado.planta} onChange={(v) => onChange("planta", v)} /><Field label="Puerta" value={asegurado.puerta} onChange={(v) => onChange("puerta", v)} /><Field label="Código postal" value={asegurado.codigoPostal} onChange={(v) => onChange("codigoPostal", v)} /><Field label="Población" value={asegurado.poblacion} onChange={(v) => onChange("poblacion", v)} /><Field label="Provincia" value={asegurado.provincia} onChange={(v) => onChange("provincia", v)} /><Field label="País" value={asegurado.pais} onChange={(v) => onChange("pais", v)} /></div></div></form>;
+  return <form onSubmit={onSubmit} className="space-y-5 p-6"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><h2 className="text-xl font-bold">{modo === "nuevo" ? "Nuevo asegurado" : "Editar asegurado"}</h2><p className="mt-1 text-sm text-muted-foreground">Completa los datos principales de identificación, contacto y dirección.</p></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={onCancel} className="rounded-xl"><X className="mr-2 h-4 w-4" />Cancelar</Button><Button type="submit" disabled={guardando} className="rounded-xl">{guardando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Guardar</Button></div></div><div className="grid gap-4 rounded-3xl border border-border/60 bg-background/70 p-5 md:grid-cols-2 xl:grid-cols-3"><Field label="CIF / NIF" value={asegurado.nif} onChange={(v) => onChange("nif", v)} required /><div className="space-y-2"><Label>Tipo persona</Label><select value={asegurado.tipoPersona} onChange={(e) => onChange("tipoPersona", e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"><option>Persona física</option><option>Persona jurídica</option></select></div><Field label="Teléfono principal" value={asegurado.telefono} onChange={(v) => onChange("telefono", v)} /><Field label="Teléfono secundario" value={asegurado.telefonoSecundario} onChange={(v) => onChange("telefonoSecundario", v)} /><Field label="Email" value={asegurado.email} onChange={(v) => onChange("email", v)} />{esJuridica ? <Field label="Razón social" value={asegurado.razonSocial} onChange={(v) => onChange("razonSocial", v)} required className="xl:col-span-2" /> : <><Field label="Nombre" value={asegurado.nombre} onChange={(v) => onChange("nombre", v)} required /><Field label="Primer apellido" value={asegurado.apellido1} onChange={(v) => onChange("apellido1", v)} /><Field label="Segundo apellido" value={asegurado.apellido2} onChange={(v) => onChange("apellido2", v)} /></>}<ToggleField label="Cliente privado" checked={esClientePrivado} onChange={cambiarClientePrivado} />{esClientePrivado ? <ToggleField label="Aplica retención" checked={asegurado.aplicaRetencion === "1"} onChange={(checked) => onChange("aplicaRetencion", checked ? "1" : "0")} /> : null}</div><div className="space-y-4 rounded-3xl border border-border/60 bg-background/70 p-5"><div className="rounded-2xl border border-dashed border-border/80 bg-card p-4"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /><h3 className="font-semibold">Normalizar dirección</h3></div><div className="mt-3 flex flex-col gap-2 lg:flex-row"><Input value={direccionLibre} onChange={(e) => setDireccionLibre(e.target.value)} placeholder="Ej. Federico García Lorca 87 Valencia" className="h-11 rounded-xl" /><Button type="button" variant="outline" onClick={ejecutarNormalizacion} disabled={normalizando} className="h-11 rounded-xl">{normalizando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Normalizar</Button></div><p className="mt-2 text-xs text-muted-foreground">Si hay varias coincidencias, selecciona la dirección correcta de la lista.</p>{candidatos.length > 1 ? <div className="mt-3 space-y-2"><p className="text-sm font-semibold">Direcciones encontradas</p>{candidatos.map((c, index) => <button key={c.placeId || `${c.direccionCompleta}-${index}`} type="button" onClick={() => aplicarCandidato(c)} className="w-full rounded-xl border border-border/60 bg-background p-3 text-left transition-smooth hover:border-accent/60 hover:bg-accent/10"><p className="text-sm font-semibold">{c.direccionCompleta || c.googleFormattedAddress}</p>{c.googleFormattedAddress && c.googleFormattedAddress !== c.direccionCompleta ? <p className="mt-1 text-xs text-muted-foreground">{c.googleFormattedAddress}</p> : null}{c.consultaUsada ? <p className="mt-1 text-[11px] text-muted-foreground">Consulta usada: {c.consultaUsada}</p> : null}</button>)}</div> : null}</div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Field label="Tipo de vía" value={asegurado.via} onChange={(v) => onChange("via", v)} /><Field label="Nombre vía / dirección" value={asegurado.direccion} onChange={(v) => onChange("direccion", v)} className="xl:col-span-2" /><Field label="Número" value={asegurado.numeroCalle} onChange={(v) => onChange("numeroCalle", v)} /><Field label="Bloque" value={asegurado.bloque} onChange={(v) => onChange("bloque", v)} /><Field label="Escalera" value={asegurado.escalera} onChange={(v) => onChange("escalera", v)} /><Field label="Planta" value={asegurado.planta} onChange={(v) => onChange("planta", v)} /><Field label="Puerta" value={asegurado.puerta} onChange={(v) => onChange("puerta", v)} /><div className="xl:col-span-3"><CamposLocalidadEspana values={{ codigoPostal: asegurado.codigoPostal, poblacion: asegurado.poblacion, provincia: asegurado.provincia }} onChange={(patch) => { if (patch.codigoPostal !== undefined) onChange("codigoPostal", patch.codigoPostal); if (patch.poblacion !== undefined) onChange("poblacion", patch.poblacion); if (patch.provincia !== undefined) onChange("provincia", patch.provincia); }} /></div><Field label="País" value={asegurado.pais} onChange={(v) => onChange("pais", v)} /></div></div></form>;
 };
 
 const buildDireccionLibre = (asegurado: Asegurado) => [asegurado.via, asegurado.direccion, asegurado.numeroCalle, asegurado.codigoPostal, asegurado.poblacion, asegurado.provincia].filter(Boolean).join(" ");

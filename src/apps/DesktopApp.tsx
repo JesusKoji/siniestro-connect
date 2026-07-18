@@ -1,39 +1,99 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AseguradosApp } from "@/apps/AseguradosApp";
-import { Logo } from "@/components/Logo";
+import { ListAsignadosApp } from "@/apps/ListAsignadosApp";
+import { PolizasApp } from "@/apps/PolizasApp";
+import { SiniestrosGeneralApp } from "@/apps/SiniestrosGeneralApp";
+import { SiniestrosApp } from "@/apps/SiniestrosApp";
+import { VistaPendienteApp } from "@/apps/VistaPendienteApp";
+import { GestionPericialMenu, OpcionMenuGestion } from "@/components/GestionPericialMenu";
+import { GestionPericialMenuModerno } from "@/components/GestionPericialMenuModerno";
+import { ElegirListadoAsignadosDialog } from "@/components/ElegirListadoAsignadosDialog";
+import { EstiloMenuInicio } from "@/components/menuGestionPericial";
+import { AppHeader, type VistaDesktop } from "@/components/AppHeader";
 import { LoginScreen } from "@/components/LoginScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Siniestro } from "@/data/siniestros";
-import { abrirWhatsApp, cerrarSesion, ejecutarScriptEnviarEnlace, listarSiniestrosEnCurso } from "@/lib/filemaker";
+import {
+  abrirWhatsApp,
+  cerrarSesion,
+  ejecutarScriptEnviarEnlace,
+  estaAutenticado,
+  listarSiniestrosEnCurso,
+  obtenerUsuarioSesion,
+} from "@/lib/filemaker";
 import {
   Building2,
   Calendar,
   FileText,
   Loader2,
-  LogOut,
   MapPin,
   Phone,
   Search,
   Send,
   Tag,
   User,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { PeriodoListadoAsignados } from "@/lib/asignadosSiniestros";
 
-type DesktopView = "enlaces" | "asegurados";
+type DesktopView = VistaDesktop | "enlaces" | "list-asignados";
+
+const CLAVE_ESTILO_MENU = "siniestro-connect:estilo-menu";
+
+function leerEstiloMenu(param: string | null): EstiloMenuInicio {
+  if (param === "clasico" || param === "moderno") return param;
+  if (typeof sessionStorage !== "undefined") {
+    const guardado = sessionStorage.getItem(CLAVE_ESTILO_MENU);
+    if (guardado === "clasico" || guardado === "moderno") return guardado;
+  }
+  return "moderno";
+}
 
 export const DesktopApp = () => {
-  const [autenticado, setAutenticado] = useState(false);
-  const [vista, setVista] = useState<DesktopView>("enlaces");
+  const [autenticado, setAutenticado] = useState(() => estaAutenticado());
+  const [nombreUsuario, setNombreUsuario] = useState(() => obtenerUsuarioSesion());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const vistaParam = searchParams.get("vista");
+  const periodoAsignados = (searchParams.get("periodo") ?? "anual") as PeriodoListadoAsignados;
+  const estiloMenu = leerEstiloMenu(searchParams.get("menu"));
+  const vista: DesktopView =
+    vistaParam === "enlaces" ||
+    vistaParam === "en-curso" ||
+    vistaParam === "siniestros" ||
+    vistaParam === "tareas" ||
+    vistaParam === "asegurados" ||
+    vistaParam === "polizas" ||
+    vistaParam === "list-asignados"
+      ? vistaParam
+      : "menu";
+  const setVista = (nueva: VistaDesktop | "list-asignados" | "enlaces", opciones?: { periodo?: PeriodoListadoAsignados }) => {
+    const params: Record<string, string> = {};
+    if (nueva !== "menu") params.vista = nueva;
+    if (nueva === "list-asignados") params.periodo = opciones?.periodo ?? "anual";
+    if (estiloMenu !== "moderno") params.menu = estiloMenu;
+    setSearchParams(params);
+  };
+
+  const alternarEstiloMenu = () => {
+    const siguiente: EstiloMenuInicio = estiloMenu === "moderno" ? "clasico" : "moderno";
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem(CLAVE_ESTILO_MENU, siguiente);
+    }
+    setSearchParams(
+      siguiente === "moderno" ? {} : { menu: siguiente },
+      { replace: true }
+    );
+  };
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [seleccionado, setSeleccionado] = useState<Siniestro | null>(null);
   const [query, setQuery] = useState("");
   const [movil, setMovil] = useState("");
   const [loading, setLoading] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [dialogAsignados, setDialogAsignados] = useState(false);
 
   useEffect(() => {
     if (!autenticado || vista !== "enlaces" || siniestros.length > 0) return;
@@ -84,58 +144,112 @@ export const DesktopApp = () => {
   const logout = () => {
     cerrarSesion();
     setAutenticado(false);
-    setVista("enlaces");
+    setNombreUsuario("");
+    setVista("menu");
     setSiniestros([]);
     setSeleccionado(null);
     setQuery("");
     setMovil("");
   };
 
+  const irMenuOpcion = (opcion: OpcionMenuGestion) => {
+    if (opcion === "list-asignados") {
+      setDialogAsignados(true);
+      return;
+    }
+    setVista(opcion);
+  };
+
+  const elegirPeriodoAsignados = (periodo: PeriodoListadoAsignados) => {
+    setDialogAsignados(false);
+    setVista("list-asignados", { periodo });
+  };
+
   if (!autenticado) {
-    return <LoginScreen onLogin={() => setAutenticado(true)} />;
+    return (
+      <LoginScreen
+        onLogin={(usuario) => {
+          setAutenticado(true);
+          setNombreUsuario(usuario);
+        }}
+      />
+    );
+  }
+
+  if (vista === "menu") {
+    const propsMenu = {
+      nombreUsuario,
+      onNavigate: irMenuOpcion,
+      onPendiente: (label: string) =>
+        toast.info(`«${label}» estará disponible próximamente en la web`),
+      onSalir: logout,
+      onCambiarEstilo: alternarEstiloMenu,
+    };
+
+    return (
+      <>
+        {estiloMenu === "clasico" ? (
+          <GestionPericialMenu {...propsMenu} />
+        ) : (
+          <GestionPericialMenuModerno {...propsMenu} />
+        )}
+        <ElegirListadoAsignadosDialog
+          open={dialogAsignados}
+          onOpenChange={setDialogAsignados}
+          onElegir={elegirPeriodoAsignados}
+        />
+      </>
+    );
+  }
+
+  if (vista === "list-asignados") {
+    return (
+      <ListAsignadosApp
+        periodo={periodoAsignados}
+        onNavigate={setVista}
+        onVolver={() => setVista("menu")}
+        onLogout={logout}
+      />
+    );
+  }
+
+  if (vista === "en-curso") {
+    return <SiniestrosApp onNavigate={setVista} onLogout={logout} />;
+  }
+
+  if (vista === "siniestros") {
+    return <SiniestrosGeneralApp onNavigate={setVista} onLogout={logout} />;
+  }
+
+  if (vista === "tareas") {
+    return (
+      <VistaPendienteApp
+        active="tareas"
+        titulo="Tareas"
+        descripcion="Módulo de tareas en desarrollo."
+        onNavigate={setVista}
+        onLogout={logout}
+      />
+    );
   }
 
   return (
     <div className="min-h-screen gradient-surface text-foreground">
-      <header className="border-b border-border/60 bg-card/85 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-4">
-          <Logo size="sm" />
-          <div className="flex items-center gap-2">
-            <Button
-              variant={vista === "enlaces" ? "default" : "outline"}
-              onClick={() => setVista("enlaces")}
-              className="rounded-xl"
-            >
-              <Send className="mr-2 h-4 w-4" />
-              Enlaces
-            </Button>
-            <Button
-              variant={vista === "asegurados" ? "default" : "outline"}
-              onClick={() => setVista("asegurados")}
-              className="rounded-xl"
-            >
-              <Users className="mr-2 h-4 w-4" />
-              Asegurados
-            </Button>
-            <Button
-              variant="outline"
-              onClick={logout}
-              className="rounded-xl border-border/80 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Salir
-            </Button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        active={vista === "enlaces" ? null : vista}
+        onNavigate={setVista}
+        onLogout={logout}
+      />
 
       {vista === "asegurados" ? (
         <AseguradosApp />
+      ) : vista === "polizas" ? (
+        <PolizasApp />
       ) : (
         <main className="mx-auto grid max-w-7xl gap-6 px-8 py-8 lg:grid-cols-[380px_1fr]">
           <section className="rounded-3xl border border-border/60 bg-card shadow-soft">
             <div className="border-b border-border/60 p-5">
-              <h1 className="text-2xl font-bold">Siniestros en curso</h1>
+              <h1 className="text-2xl font-bold">Enlaces</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 {loading ? "Cargando expedientes..." : `${filtrados.length} expedientes disponibles`}
               </p>

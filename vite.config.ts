@@ -1,7 +1,24 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import fs from "fs";
 import { componentTagger } from "lovable-tagger";
+import basicSsl from "@vitejs/plugin-basic-ssl";
+
+/** Misma regla que src/lib/catastro.ts (sin importar el módulo: usa alias @/). */
+function esReferenciaCatastralValida(ref: string) {
+  return /^(?:[A-Z0-9]{14}|[A-Z0-9]{20})$/.test(ref);
+}
+
+/** Certificado propio (.certs) con las IPs de red en el SAN, si existe. */
+function leerCertificadoDev() {
+  const keyPath = path.resolve(__dirname, ".certs/dev-key.pem");
+  const certPath = path.resolve(__dirname, ".certs/dev-cert.pem");
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+  }
+  return null;
+}
 
 type AddressComponent = {
   long_name: string;
@@ -116,58 +133,93 @@ function buildQueryVariants(q: string) {
   const lower = clean.toLowerCase();
   const hasKnownType = /^(carrer|calle|avenida|avinguda|av\.?|passeig|paseo|plaza|plaça|camino|camí|carretera|ronda|travesía|travessera)\b/.test(lower);
   const hasValencia = /\b(valencia|valència)\b/.test(lower);
-  const citySuffix = hasValencia ? "" : ", Valencia";
   const parsed = splitLooseStreetNumber(clean);
+  const locationSuffix = formatLocationSuffix(parsed, hasValencia);
 
   if (hasKnownType) {
-    return unique([clean, `${clean}${citySuffix}`, `${clean}, España`]);
+    return unique([clean, `${clean}${locationSuffix}`, `${clean}, España`]);
   }
 
   const loose = [
     clean,
-    `${clean}${citySuffix}`,
+    `${clean}${locationSuffix}`,
     `${clean}, España`,
-    `Avenida ${clean}${citySuffix}`,
-    `Avinguda ${clean}${citySuffix}`,
-    `Calle ${clean}${citySuffix}`,
-    `Carrer ${clean}${citySuffix}`,
+    `Calle ${clean}${locationSuffix}`,
+    `Carrer ${clean}${locationSuffix}`,
   ];
 
   if (!parsed) {
-    return unique([
-      ...loose,
-      `Avenida del Poeta ${clean}${citySuffix}`,
-      `Avinguda del Poeta ${clean}${citySuffix}`,
-    ]);
+    return unique(loose);
   }
 
-  const { street, number, city } = parsed;
-  const suffix = city ? `, ${city}` : citySuffix;
+  const { street, number } = parsed;
   return unique([
+    `Calle ${street}, ${number}${locationSuffix}`,
+    `Carrer ${street}, ${number}${locationSuffix}`,
+    `${street}, ${number}${locationSuffix}`,
     ...loose,
-    `${street}, ${number}${suffix}`,
-    `Avenida del Poeta ${street}, ${number}${suffix}`,
-    `Avinguda del Poeta ${street}, ${number}${suffix}`,
-    `Avenida Poeta ${street}, ${number}${suffix}`,
-    `Avinguda Poeta ${street}, ${number}${suffix}`,
-    `Avenida ${street}, ${number}${suffix}`,
-    `Avinguda ${street}, ${number}${suffix}`,
-    `Calle ${street}, ${number}${suffix}`,
-    `Carrer ${street}, ${number}${suffix}`,
   ]);
 }
 
-function splitLooseStreetNumber(q: string): { street: string; number: string; city: string } | null {
+function formatLocationSuffix(
+  parsed: { city: string; postalCode?: string } | null,
+  hasValencia: boolean
+): string {
+  if (parsed?.postalCode) {
+    const cityPart = parsed.city ? `, ${parsed.city}` : "";
+    return `, ${parsed.postalCode}${cityPart}, Valencia, España`;
+  }
+
+  if (parsed?.city) {
+    if (/\b(valencia|valència)\b/i.test(parsed.city)) {
+      return `, ${parsed.city}, España`;
+    }
+    return `, ${parsed.city}, Valencia, España`;
+  }
+
+  if (hasValencia) return ", España";
+  return ", Valencia, España";
+}
+
+function splitLooseStreetNumber(q: string): { street: string; number: string; city: string; postalCode?: string } | null {
   const normalized = q.trim().replace(/\s+/g, " ");
-  const cityMatch = normalized.match(/\b(valencia|valència)\b/i);
-  const city = cityMatch?.[0] || "Valencia";
-  const withoutCity = normalized.replace(/\b(valencia|valència)\b/gi, "").replace(/[, ]+$/g, "").trim();
-  const match = withoutCity.match(/^(.*?)(\d+[a-zA-Z]?)$/);
-  if (!match) return null;
-  const street = match[1].replace(/[, ]+$/g, "").trim();
-  const number = match[2].trim();
-  if (!street || !number) return null;
-  return { street, number, city };
+
+  const cpMatch = normalized.match(/^(.*?)\s+(\d{5})(?:\s+(.+))?$/);
+  if (cpMatch) {
+    const before = cpMatch[1].trim();
+    const postalCode = cpMatch[2];
+    const cityAfterCp = cpMatch[3]?.trim() || "";
+    const streetNum = before.match(/^(.*?)\s+(\d+[a-zA-Z]?)$/);
+    if (streetNum) {
+      return {
+        street: streetNum[1].trim(),
+        number: streetNum[2],
+        city: cityAfterCp,
+        postalCode,
+      };
+    }
+  }
+
+  const valenciaMatch = normalized.match(/\b(valencia|valència)\b/i);
+  const withoutValencia = normalized.replace(/\b(valencia|valència)\b/gi, "").replace(/[, ]+$/g, "").trim();
+
+  const withCityMatch = withoutValencia.match(/^(.*?)\s+(\d+[a-zA-Z]?)\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][\w\s.'-]{2,})$/);
+  if (withCityMatch && !/^\d{5}$/.test(withCityMatch[3].trim())) {
+    return {
+      street: withCityMatch[1].trim(),
+      number: withCityMatch[2],
+      city: withCityMatch[3].trim(),
+    };
+  }
+
+  const endNumber = withoutValencia.match(/^(.*?)\s+(\d+[a-zA-Z]?)$/);
+  if (!endNumber) return null;
+
+  return {
+    street: endNumber[1].trim(),
+    number: endNumber[2],
+    city: valenciaMatch?.[0] || "",
+  };
 }
 
 function unique(values: string[]) {
@@ -282,14 +334,101 @@ function buildNormalizedAddress(parts: {
   ].filter(Boolean).join(" · ");
 }
 
+const CATASTRO_DNPLOC_BASE =
+  "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/Consulta_DNPLOC";
+const CATASTRO_DNPRC_BASE =
+  "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/Consulta_DNPRC";
+
+function catastroPlugin(): Plugin {
+  return {
+    name: "local-catastro-api",
+    configureServer(server) {
+      server.middlewares.use("/api/catastro/dnploc", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const params = new URLSearchParams();
+          for (const key of ["Provincia", "Municipio", "Sigla", "Calle", "Numero", "Bloque", "Escalera", "Planta", "Puerta"]) {
+            const value = url.searchParams.get(key)?.trim();
+            if (value) params.set(key, value);
+          }
+
+          if (!params.get("Provincia") || !params.get("Municipio") || !params.get("Sigla") || !params.get("Calle") || !params.get("Numero")) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Faltan parámetros obligatorios del catastro" }));
+            return;
+          }
+
+          const catastroRes = await fetch(`${CATASTRO_DNPLOC_BASE}?${params.toString()}`);
+          const data = await catastroRes.json().catch(() => null);
+
+          if (!catastroRes.ok || !data) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "No se pudo consultar el servicio del catastro" }));
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error consultando catastro" }));
+        }
+      });
+
+      server.middlewares.use("/api/catastro/dnprc", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const refCat = url.searchParams.get("RefCat")?.trim().toUpperCase().replace(/[\s.-]/g, "");
+
+          if (!refCat || !esReferenciaCatastralValida(refCat)) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Referencia catastral no válida" }));
+            return;
+          }
+
+          const catastroRes = await fetch(`${CATASTRO_DNPRC_BASE}?RefCat=${encodeURIComponent(refCat)}`);
+          const data = await catastroRes.json().catch(() => null);
+
+          if (!catastroRes.ok || !data) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "No se pudo consultar el servicio del catastro" }));
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error consultando catastro" }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const fileMakerProxyTarget = env.VITE_DEV_FM_PROXY_TARGET || "https://localhost";
+  // HTTPS por defecto: evita el bloqueo "no seguro" de Chrome al forzar https.
+  const usarHttps = (env.VITE_DEV_HTTPS ?? "true") !== "false";
+  const certificadoDev = usarHttps ? leerCertificadoDev() : null;
 
   return {
     server: {
-      host: "::",
-      port: 8080,
+      // 0.0.0.0 permite acceso por IP de red (p. ej. 192.168.1.14:5174).
+      host: env.VITE_DEV_SERVER_HOST || "0.0.0.0",
+      port: Number(env.VITE_DEV_PORT || 5174),
+      strictPort: false,
+      // Certificado propio con las IPs en el SAN; si no, lo aporta basicSsl().
+      https: certificadoDev ?? undefined,
       hmr: {
         overlay: false,
       },
@@ -301,7 +440,13 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react(), geocodePlugin(env.GOOGLE_MAPS_API_KEY), mode === "development" && componentTagger()].filter(Boolean),
+    plugins: [
+      react(),
+      usarHttps && !certificadoDev && basicSsl(),
+      geocodePlugin(env.GOOGLE_MAPS_API_KEY),
+      catastroPlugin(),
+      mode === "development" && componentTagger(),
+    ].filter(Boolean),
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

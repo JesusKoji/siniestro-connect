@@ -1,0 +1,214 @@
+{
+  "library": "lucide",
+  "version": "0.462.0",
+  "icons": [
+    {
+      "reactName": "AlertTriangle",
+      "file": "alert-triangle.svg"
+    },
+    {
+      "reactName": "ArrowLeft",
+      "file": "arrow-left.svg"
+    },
+    {
+      "reactName": "ArrowRight",
+      "file": "arrow-right.svg"
+    },
+    {
+      "reactName": "BarChart3",
+      "file": "bar-chart-3.svg"
+    },
+    {
+      "reactName": "Building2",
+      "file": "building-2.svg"
+    },
+    {
+      "reactName": "Calendar",
+      "file": "calendar.svg"
+    },
+    {
+      "reactName": "CalendarDays",
+      "file": "calendar-days.svg"
+    },
+    {
+      "reactName": "CalendarRange",
+      "file": "calendar-range.svg"
+    },
+    {
+      "reactName": "Check",
+      "file": "check.svg"
+    },
+    {
+      "reactName": "ChevronDown",
+      "file": "chevron-down.svg"
+    },
+    {
+      "reactName": "ChevronLeft",
+      "file": "chevron-left.svg"
+    },
+    {
+      "reactName": "ChevronRight",
+      "file": "chevron-right.svg"
+    },
+    {
+      "reactName": "ChevronUp",
+      "file": "chevron-up.svg"
+    },
+    {
+      "reactName": "Circle",
+      "file": "circle.svg"
+    },
+    {
+      "reactName": "ClipboardList",
+      "file": "clipboard-list.svg"
+    },
+    {
+      "reactName": "CreditCard",
+      "file": "credit-card.svg"
+    },
+    {
+      "reactName": "Dot",
+      "file": "dot.svg"
+    },
+    {
+      "reactName": "Edit3",
+      "file": "edit-3.svg"
+    },
+    {
+      "reactName": "ExternalLink",
+      "file": "external-link.svg"
+    },
+    {
+      "reactName": "FilePlus2",
+      "file": "file-plus-2.svg"
+    },
+    {
+      "reactName": "FileText",
+      "file": "file-text.svg"
+    },
+    {
+      "reactName": "FolderOpen",
+      "file": "folder-open.svg"
+    },
+    {
+      "reactName": "GripVertical",
+      "file": "grip-vertical.svg"
+    },
+    {
+      "reactName": "Hash",
+      "file": "hash.svg"
+    },
+    {
+      "reactName": "Home",
+      "file": "home.svg"
+    },
+    {
+      "reactName": "IdCard",
+      "file": "id-card.svg"
+    },
+    {
+      "reactName": "LayoutGrid",
+      "file": "layout-grid.svg"
+    },
+    {
+      "reactName": "LayoutTemplate",
+      "file": "layout-template.svg"
+    },
+    {
+      "reactName": "Loader2",
+      "file": "loader-2.svg"
+    },
+    {
+      "reactName": "Lock",
+      "file": "lock.svg"
+    },
+    {
+      "reactName": "LogOut",
+      "file": "log-out.svg"
+    },
+    {
+      "reactName": "Mail",
+      "file": "mail.svg"
+    },
+    {
+      "reactName": "MapPin",
+      "file": "map-pin.svg"
+    },
+    {
+      "reactName": "Monitor",
+      "file": "monitor.svg"
+    },
+    {
+      "reactName": "MoreHorizontal",
+      "file": "more-horizontal.svg"
+    },
+    {
+      "reactName": "PanelLeft",
+      "file": "panel-left.svg"
+    },
+    {
+      "reactName": "Phone",
+      "file": "phone.svg"
+    },
+    {
+      "reactName": "Plus",
+      "file": "plus.svg"
+    },
+    {
+      "reactName": "Receipt",
+      "file": "receipt.svg"
+    },
+    {
+      "reactName": "Save",
+      "file": "save.svg"
+    },
+    {
+      "reactName": "Search",
+      "file": "search.svg"
+    },
+    {
+      "reactName": "Send",
+      "file": "send.svg"
+    },
+    {
+      "reactName": "Settings",
+      "file": "settings.svg"
+    },
+    {
+      "reactName": "ShieldCheck",
+      "file": "shield-check.svg"
+    },
+    {
+      "reactName": "Sparkles",
+      "file": "sparkles.svg"
+    },
+    {
+      "reactName": "Tag",
+      "file": "tag.svg"
+    },
+    {
+      "reactName": "Trash2",
+      "file": "trash-2.svg"
+    },
+    {
+      "reactName": "User",
+      "file": "user.svg"
+    },
+    {
+      "reactName": "UserRound",
+      "file": "user-round.svg"
+    },
+    {
+      "reactName": "Users",
+      "file": "users.svg"
+    },
+    {
+      "reactName": "Wrench",
+      "file": "wrench.svg"
+    },
+    {
+      "reactName": "X",
+      "file": "x.svg"
+    }
+  ]
+}

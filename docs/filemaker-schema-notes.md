@@ -16,14 +16,14 @@ Fuente: DDR parcial aportado en `Archivo.zip` el 2026-05-19. Este documento se i
 - Layout API actual para listado/enlaces: `API_EnlacesSiniestros`
 - Script para enlaces/WhatsApp: `SMS`
 - Siniestros en curso: campo `FechaCierre` vacío (`=` en búsqueda FileMaker)
-- Campos usados inicialmente en la web: `NumeroSiniestro`, `Asegurado`, `zVistaDireccionCrawfordEnLinea`, `TipoSiniestro`, `siniestros_polizas_COMPANIAS::Alias` / `siniestros_polizas_COMPANIAS:Alias`
+- Campos usados inicialmente en la web: `NumeroSiniestro`, `Asegurado`, `zVistaDireccionCrawfordEnLinea`, `TipoSiniestro`, `Alias` (relacionado vía póliza→Compañía en `API_Siniestros`)
 
 ## Layouts API disponibles
 
 - `API_Asegurados`: layout API para tabla `Asegurados`.
 - `API_ContactosAsegurado`: layout API para tabla `ContactosAsegurados`.
 - `API_Polizas`: layout API para tabla `Polizas`.
-- `API_Siniestros`: layout API para tabla `Siniestros`. Confirmado que incluye `_kp_ID_Siniestro`, `_kf_ID_Asegurado` y `_kf_ID_Poliza`.
+- `API_Siniestros`: layout API para tabla `Siniestros`. Confirmado que incluye `_kp_ID_Siniestro`, `_kf_ID_Asegurado`, `_kf_ID_Poliza` y el campo relacionado `Alias` (Compañía vía póliza).
 - `API_ContactosSiniestros`: layout API para tabla `ContactosSiniestros`.
 - `API_EnlacesSiniestros`: layout API utilizado actualmente por la web para siniestros en curso y envío de enlaces.
 
@@ -132,10 +132,11 @@ ContactosSiniestros::_kf_ID_Siniestro
 - `NumeroPoliza`.
 - `Agente`, `TlfAgente`, `TlfAgente2`, `EmailAgente`.
 - Dirección del riesgo: `Via`, `Direccion`, `NumeroCalle`, `Bloque`, `Escalera`, `Planta`, `Puerta`, `CodPostal`, `Poblacion`, `Provincia`, `Comunidad`, `Pais`, `DireccionCompleta`, `PosGPS`.
-- Dirección normalizada/catastro: `ViaC`, `NombreViaC`, `DireccionC`, `NumeroCalleC`, `BloqueC`, `EscaleraC`, `PlantaC`, `PuertaC`, `CodPostaclC`, `PoblacionC`, `ProvinciaC`, `CLAVE_DIRECCION_BUSQUEDA`.
+- Dirección normalizada/catastro: `ViaC`, `NombreViaC`, `DireccionC`, `NumeroCalleC`, `BloqueC`, `EscaleraC`, `PlantaC`, `PuertaC`, `CodPostalC`, `PoblacionC`, `ProvinciaC`, `CLAVE_DIRECCION_BUSQUEDA`.
 - Capitales y valoración: `CtePoliza`, `CtdoPoliza`, `MobYMaqPoliza`, `ExistenciasPoliza`, `Embarcacion`, `AnoConstruccion`, `Antiguedad`, `CapitalRCPoliza`, `CapitalPEMPoliza`, `CapitalPEM`.
 - Infraseguro: campos `CoefInfra*`, `Is_Infraseg_*`, `TextoInfraseguro*`, `InfraseguroCrawford*`.
 - Catastro: `Catastro`, `CatastroVerificado`, `CatastroJSONRaw`, `CatastroUltAct`, `CatastroJSONclean`, `UsosJSON`, `UsosParcelaJSON`, `SupConstruidaTotal`, `UsoPrincipal`.
+- **DetalleCatastro** (layout `API_detalleCatastro`): clave `Clave Principal`, relación `_kf_ID_Poliza` (o `_kf_ID_Polizas`) → Polizas. La web guarda `Uso`, `Superficie` y, si existe en el layout, `Catastro` / referencia.
 
 ### Siniestros
 
