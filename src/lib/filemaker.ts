@@ -3415,6 +3415,9 @@ function mapearAsegurado(record: FileMakerRecord): Asegurado {
     provincia: textoCampo(f.Provincia),
     pais: textoCampo(f.Pais),
     direccionCompleta: getFirstValue(f, ["DireccCompleta", "DireccionCompleta"]),
+    latitud: getFirstValue(f, ["Latitud", "latitud"]),
+    longitud: getFirstValue(f, ["Longitud", "longitud"]),
+    parcelaCatastral: getFirstValue(f, ["ParcelaCatastral", "Parcela_Catastral"]),
     email: getFirstContacto(f, ["email", "Email", "Mail"]),
     telefono: getFirstContacto(f, ["TelefonoP", "Telefono", "Movil", "Tlf"]),
     telefonoSecundario: getFirstContacto(f, ["TelefonoS", "Telefono2"]),
@@ -3428,6 +3431,9 @@ const ASEGURADO_CAMPOS_ALIASES: Record<string, string[]> = {
   TelefonoS: ["TelefonoS", "Telefono2"],
   DireccCompleta: ["DireccCompleta", "DireccionCompleta"],
   CodPostal: ["CodPostal", "CodigoPostal"],
+  Latitud: ["Latitud", "latitud"],
+  Longitud: ["Longitud", "longitud"],
+  ParcelaCatastral: ["ParcelaCatastral", "Parcela_Catastral"],
 };
 
 function buildDireccionCompletaAsegurado(asegurado: Asegurado): string {
@@ -3485,6 +3491,9 @@ async function aseguradoFieldDataParaLayout(asegurado: Asegurado): Promise<Recor
     ["Provincia", asegurado.provincia],
     ["Pais", asegurado.pais],
     ["DireccCompleta", buildDireccionCompletaAsegurado(asegurado)],
+    ["Latitud", asegurado.latitud],
+    ["Longitud", asegurado.longitud],
+    ["ParcelaCatastral", asegurado.parcelaCatastral],
     ["email", asegurado.email],
     ["TelefonoP", asegurado.telefono],
     ["TelefonoS", asegurado.telefonoSecundario],
@@ -3540,7 +3549,7 @@ async function postAseguradoConReintento(fieldData: Record<string, string>) {
   }
 }
 
-function aseguradoToFieldData(a: Asegurado, includeOptionalClientFields = true): Record<string, string> { return limpiarFieldData({ NIF: textoCampo(a.nif), is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), ...(includeOptionalClientFields ? { Is_ClientePrivado: a.clientePrivado === "1" ? "1" : "0", Is_Retencion: a.clientePrivado === "1" && a.aplicaRetencion === "1" ? "1" : "0" } : {}), Nombre: textoCampo(a.nombre), Apellido1: textoCampo(a.apellido1), Apellido2: textoCampo(a.apellido2), RazonSocial: textoCampo(a.razonSocial), Via: textoCampo(a.via), Direccion: textoCampo(a.direccion), NumeroCalle: textoCampo(a.numeroCalle), Bloque: textoCampo(a.bloque), Escalera: textoCampo(a.escalera), Planta: textoCampo(a.planta), Puerta: textoCampo(a.puerta), CodPostal: textoCampo(a.codigoPostal), Poblacion: textoCampo(a.poblacion), Provincia: textoCampo(a.provincia), Pais: textoCampo(a.pais), DireccCompleta: buildDireccionCompletaAsegurado(a), email: textoCampo(a.email), TelefonoP: textoCampo(a.telefono), TelefonoS: textoCampo(a.telefonoSecundario) }); }
+function aseguradoToFieldData(a: Asegurado, includeOptionalClientFields = true): Record<string, string> { return limpiarFieldData({ NIF: textoCampo(a.nif), is_CIF: isCIFDesdeTipoPersona(a.tipoPersona), ...(includeOptionalClientFields ? { Is_ClientePrivado: a.clientePrivado === "1" ? "1" : "0", Is_Retencion: a.clientePrivado === "1" && a.aplicaRetencion === "1" ? "1" : "0" } : {}), Nombre: textoCampo(a.nombre), Apellido1: textoCampo(a.apellido1), Apellido2: textoCampo(a.apellido2), RazonSocial: textoCampo(a.razonSocial), Via: textoCampo(a.via), Direccion: textoCampo(a.direccion), NumeroCalle: textoCampo(a.numeroCalle), Bloque: textoCampo(a.bloque), Escalera: textoCampo(a.escalera), Planta: textoCampo(a.planta), Puerta: textoCampo(a.puerta), CodPostal: textoCampo(a.codigoPostal), Poblacion: textoCampo(a.poblacion), Provincia: textoCampo(a.provincia), Pais: textoCampo(a.pais), DireccCompleta: buildDireccionCompletaAsegurado(a), Latitud: textoCampo(a.latitud), Longitud: textoCampo(a.longitud), ParcelaCatastral: textoCampo(a.parcelaCatastral), email: textoCampo(a.email), TelefonoP: textoCampo(a.telefono), TelefonoS: textoCampo(a.telefonoSecundario) }); }
 function contactoToFieldData(c: ContactoAsegurado, includeRelation: boolean): Record<string, string> { return limpiarFieldData({ ...(includeRelation ? { _kf_ID_Asegurado: c.idAsegurado } : {}), Nombre: c.nombre, Cargo: c.cargo, Telefono: c.telefono, Telefono2: c.telefono2, Movil: c.movil, Mail: c.mail, Notas: c.notas }); }
 function polizaToFieldData(p: Poliza, includeRelation: boolean, enviarVacios = false): Record<string, string> {
   const v = (value?: unknown) => {
@@ -3908,6 +3917,9 @@ function fusionarAseguradoTrasGuardar(guardado: Asegurado, enviado: Asegurado): 
     poblacion: textoCampo(guardado.poblacion) || textoCampo(enviado.poblacion),
     provincia: textoCampo(guardado.provincia) || textoCampo(enviado.provincia),
     pais: textoCampo(guardado.pais) || textoCampo(enviado.pais),
+    latitud: textoCampo(guardado.latitud) || textoCampo(enviado.latitud),
+    longitud: textoCampo(guardado.longitud) || textoCampo(enviado.longitud),
+    parcelaCatastral: textoCampo(guardado.parcelaCatastral) || textoCampo(enviado.parcelaCatastral),
     direccionCompleta:
       textoCampo(guardado.direccionCompleta) || textoCampo(enviado.direccionCompleta),
   });

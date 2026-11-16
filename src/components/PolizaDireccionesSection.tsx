@@ -30,9 +30,13 @@ import {
   esReferenciaParcela,
   filtrarDetallesUsosConstructivos,
   InmuebleParcelaCatastro,
+  consultarCatastroPorCoordenadas,
+  erroresNombreCatastroNoReconocido,
   normalizarDireccionCatastro,
   OpcionParcelaCatastro,
   puedeConsultarCatastroOficial,
+  prepararReferenciaCatastroWeb,
+  ResultadoNormalizacionCatastro,
   sumarUsosJsonParcela,
 } from "@/lib/catastro";
 import {
@@ -40,13 +44,23 @@ import {
   actualizarSumatoriosCatastroPoliza,
   actualizarSumatoriosParcelaCatastroPoliza,
   guardarDetallesCatastroPoliza,
+  obtenerSiniestrosAsegurado,
   reemplazarDetalleCatastroParcelaPoliza,
   reemplazarDetallesCatastroPoliza,
   reemplazarDetallesCatastroPorReferencia,
 } from "@/lib/filemaker";
+import { numerosSiniestroEnCursoDePoliza } from "@/lib/carpetaDocSiniestro";
 import { DireccionNormalizada, normalizarDireccion } from "@/lib/geocode";
 import { textoCampo } from "@/lib/textoCampo";
 import { abrirWebCatastroPoliza, reservarVentanaCatastro } from "@/lib/abrirWebCatastro";
+import {
+  anticiparCarpetaDocPortatil,
+  delegacionMunicipioParaDescarga,
+  descargarDocumentoNormalizacionCatastro,
+  descargarVistaSateliteCatastro,
+  documentoNormalizacionCatastro,
+  type ResultadoDescargaCatastro,
+} from "@/lib/catastroWeb";
 import { Building2, ExternalLink, Loader2, MapPin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
@@ -230,7 +244,61 @@ export const PolizaDireccionesSection = ({
     );
   };
 
+  const publicarResultadoCatastro = async (resultado: ResultadoNormalizacionCatastro) => {
+    dtConsultaRef.current = resultado.dtConsulta;
+    candidatosConsultaRef.current = resultado.candidatos;
+    opcionParcelaRef.current = resultado.opcionParcela ?? null;
+    setOpcionParcelaCatastro(resultado.opcionParcela ?? null);
+    setCandidatosCatastro(resultado.candidatos);
+    setNumerosCatastro(resultado.numerosAlternativos);
+    const usosFinca = filtrarDetallesUsosConstructivos(resultado.detallesUsos);
+    usosConsultaRef.current = usosFinca;
+    setDetallesUsosCatastro(usosFinca);
+
+    if (resultado.opcionParcela) {
+      toast.success(
+        "Elige la parcela catastral completa (finca) o un inmueble concreto de la lista."
+      );
+    } else if (resultado.candidatos.length === 1) {
+      await aplicarCandidatoCatastro(resultado.candidatos[0], { detallesUsos: usosFinca });
+    } else if (resultado.candidatos.length > 1) {
+      toast.success(
+        `${resultado.candidatos.length} inmuebles encontrados. Elige uno; al seleccionar se cargarán los usos detallados del catastro.`
+      );
+    } else if (resultado.errores.length) {
+      toast.error(resultado.errores.join(". "));
+    } else {
+      toast.error("El catastro no devolvió una dirección aplicable");
+    }
+  };
+
+  const resolverCatastroDesdeCoordenadas = async (latitud: string, longitud: string) => {
+    setConsultandoCatastro(true);
+    setCandidatos([]);
+    setCandidatosCatastro([]);
+    setNumerosCatastro([]);
+    setInmuebleCatastroSeleccionado(null);
+    setParcelaCatastroSeleccionada(null);
+    try {
+      const resultado = await consultarCatastroPorCoordenadas(latitud, longitud);
+      await publicarResultadoCatastro(resultado);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo normalizar con el catastro");
+    } finally {
+      setConsultandoCatastro(false);
+    }
+  };
+
   const aplicarCandidato = (data: Candidato, tipo: TipoDireccionPoliza) => {
+    if (tipo === "catastro") {
+      if (data.latitud && data.longitud) {
+        void resolverCatastroDesdeCoordenadas(data.latitud, data.longitud);
+        return;
+      }
+      toast.error("No hay coordenadas para consultar el nombre oficial en el catastro");
+      return;
+    }
+
     const campos = aplicarDireccionNormalizada(poliza, data, tipo);
     if (onApplyFields) {
       onApplyFields(campos);
@@ -255,6 +323,83 @@ export const PolizaDireccionesSection = ({
       );
     }
     setDireccionLibre(buildDireccionLibrePoliza({ ...poliza, ...campos }, "catastro"));
+    lanzarDescargaDocumentoCatastro(campos);
+  };
+
+  const lanzarDescargaDocumentoCatastro = (campos: Partial<Poliza>) => {
+    const polizaDescarga = { ...polizaRef.current, ...campos };
+    const referencia = String(campos.catastro ?? polizaDescarga.catastro ?? "");
+    const { del, mun } = delegacionMunicipioParaDescarga(dtConsultaRef.current, polizaDescarga);
+    const ref = prepararReferenciaCatastroWeb(referencia);
+    const doc = documentoNormalizacionCatastro(referencia, del, mun);
+
+    const rutaVisible = (ruta: string) => {
+      const marca = "siniestros en curso";
+      const indice = ruta.toLowerCase().indexOf(marca);
+      return indice >= 0 ? ruta.slice(indice) : ruta;
+    };
+    const avisarGuardado = (resultado: ResultadoDescargaCatastro | null | undefined, mensaje: string) => {
+      if (resultado?.destino === "doc") {
+        toast.success(`${mensaje} en ${rutaVisible(resultado.ruta)}`);
+        return;
+      }
+      toast.success(`${mensaje} en las descargas de este navegador`);
+    };
+
+    void (async () => {
+      let numeros: string[] = [];
+      if (polizaDescarga.idAsegurado) {
+        try {
+          const siniestros = await obtenerSiniestrosAsegurado(polizaDescarga.idAsegurado);
+          numeros = numerosSiniestroEnCursoDePoliza(polizaDescarga, siniestros);
+        } catch {
+          numeros = [];
+        }
+      }
+      if (!numeros.length) {
+        toast.warning(
+          "No hay un siniestro en curso de esta póliza. Los archivos del catastro se descargan en el navegador."
+        );
+      } else if (ref?.length === 14 || ref?.length === 20 || doc) {
+        anticiparCarpetaDocPortatil();
+      }
+
+      let separarDescargas = false;
+      if (ref?.length === 14 || ref?.length === 20) {
+        try {
+          const resultado = await descargarVistaSateliteCatastro(ref, numeros);
+          if (resultado?.destino !== "doc") separarDescargas = true;
+          avisarGuardado(resultado, "Vista satélite de la cartografía del catastro guardada");
+        } catch (error) {
+          separarDescargas = true;
+          toast.warning(
+            error instanceof Error ? error.message : "No se pudo descargar la vista satélite del catastro"
+          );
+        }
+        if (separarDescargas) await new Promise((resolve) => window.setTimeout(resolve, 700));
+      }
+
+      if (!doc) {
+        if (ref?.length === 20) {
+          toast.warning("Dirección aplicada, pero falta el municipio catastral para descargar el PDF.");
+        }
+        return;
+      }
+
+      try {
+        const resultado = await descargarDocumentoNormalizacionCatastro(doc, numeros);
+        avisarGuardado(
+          resultado,
+          doc.tipo === "pdf"
+            ? "PDF de la consulta descriptiva y gráfica guardado"
+            : "Excel de referencias catastrales de la parcela guardado"
+        );
+      } catch (error) {
+        toast.warning(
+          error instanceof Error ? error.message : "No se pudo descargar el documento del catastro"
+        );
+      }
+    })();
   };
 
   const aplicarCandidatoCatastro = async (
@@ -471,35 +616,61 @@ export const PolizaDireccionesSection = ({
     setParcelaCatastroSeleccionada(null);
     try {
       const resultado = await normalizarDireccionCatastro(poliza);
-      dtConsultaRef.current = resultado.dtConsulta;
-      candidatosConsultaRef.current = resultado.candidatos;
-      opcionParcelaRef.current = resultado.opcionParcela ?? null;
-      setOpcionParcelaCatastro(resultado.opcionParcela ?? null);
-      setCandidatosCatastro(resultado.candidatos);
-      setNumerosCatastro(resultado.numerosAlternativos);
-      const usosFinca = filtrarDetallesUsosConstructivos(resultado.detallesUsos);
-      usosConsultaRef.current = usosFinca;
-      setDetallesUsosCatastro(usosFinca);
-
-      if (resultado.opcionParcela) {
-        toast.success(
-          "Elige la parcela catastral completa (finca) o un inmueble concreto de la lista."
-        );
-      } else if (resultado.candidatos.length === 1) {
-        await aplicarCandidatoCatastro(resultado.candidatos[0], { detallesUsos: usosFinca });
-      } else if (resultado.candidatos.length > 1) {
-        toast.success(
-          `${resultado.candidatos.length} inmuebles encontrados. Elige uno; al seleccionar se cargarán los usos detallados del catastro.`
-        );
-      } else if (resultado.errores.length) {
-        toast.error(resultado.errores.join(". "));
-      } else {
-        toast.error("El catastro no devolvió una dirección aplicable");
+      const texto =
+        construirConsultaDesdeCatastro(poliza).trim() || direccionLibre.trim();
+      if (
+        resultado.candidatos.length === 0 &&
+        erroresNombreCatastroNoReconocido(resultado.errores) &&
+        texto
+      ) {
+        toast.message("El catastro no reconoce esos nombres. Localizando la parcela para usar su nomenclátor.");
+        await normalizarCatastroDesdeTexto(texto);
+        return;
       }
+
+      await publicarResultadoCatastro(resultado);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo consultar el catastro");
     } finally {
       setConsultandoCatastro(false);
+    }
+  };
+
+  const normalizarCatastroDesdeTexto = async (texto: string) => {
+    const consulta = texto.trim();
+    if (!consulta) {
+      toast.error("Introduce o completa una dirección para normalizar");
+      return;
+    }
+
+    setNormalizando(true);
+    setCandidatos([]);
+    try {
+      const data = await normalizarDireccion(consulta);
+      const lista = ((data as { candidates?: Candidato[] }).candidates?.length
+        ? (data as { candidates?: Candidato[] }).candidates
+        : [data]) as Candidato[];
+      const conCoordenadas = lista.filter((candidato) => candidato.latitud && candidato.longitud);
+
+      if (conCoordenadas.length === 1) {
+        await resolverCatastroDesdeCoordenadas(conCoordenadas[0].latitud!, conCoordenadas[0].longitud!);
+        return;
+      }
+
+      if (conCoordenadas.length > 1) {
+        setCandidatos(conCoordenadas);
+        toast.success(
+          `${conCoordenadas.length} ubicaciones encontradas. Elige una para normalizar con el catastro.`
+        );
+        return;
+      }
+
+      toast.error("No hay coordenadas para consultar el nombre oficial en el catastro");
+    } catch (error) {
+      setCandidatos([]);
+      toast.error(error instanceof Error ? error.message : "No se pudo normalizar la dirección");
+    } finally {
+      setNormalizando(false);
     }
   };
 
@@ -510,7 +681,7 @@ export const PolizaDireccionesSection = ({
     }
 
     const consulta = construirConsultaDesdeCatastro(poliza) || direccionLibre;
-    await ejecutarNormalizacion("catastro", consulta);
+    await normalizarCatastroDesdeTexto(consulta);
   };
 
   const ejecutarNormalizacion = async (tipo: TipoDireccionPoliza, consulta?: string) => {
@@ -625,8 +796,8 @@ export const PolizaDireccionesSection = ({
                 onAplicarCandidato={(c) => aplicarCandidato(c, "catastro")}
                 descripcion={
                   puedeConsultarCatastroOficial(poliza)
-                    ? "Con referencia catastral o dirección completa consulta el catastro oficial (código postal, usos y superficies)."
-                    : "Normalización aproximada con Google Maps. Para usos y superficies usa referencia catastral o consulta catastro."
+                    ? "Con referencia catastral o dirección completa consulta el catastro oficial. Si no reconoce la vía o la población, localiza la parcela y usa sus nombres."
+                    : "Localiza la dirección y normaliza vía, calle y población con el nomenclátor del catastro."
                 }
               />
               <div className="rounded-2xl border border-dashed border-border/80 bg-card p-4">

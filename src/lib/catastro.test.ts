@@ -17,8 +17,10 @@ import {
   parametrosConsultaCatastroPorReferencia,
   referenciaParcelaDesdeReferencia,
   filtrarDetallesUsosConstructivos,
+  erroresNombreCatastroNoReconocido,
   parseConsultaCatastro,
   parseConsultaDnpLoc,
+  referenciaParcelaDesdeRccoor,
   siglaDesdeVia,
 } from "@/lib/catastro";
 import { Poliza } from "@/data/siniestros";
@@ -85,6 +87,36 @@ describe("normalizarReferenciaCatastral", () => {
   it("rechaza referencias inválidas", () => {
     expect(normalizarReferenciaCatastral("123")).toBeNull();
     expect(normalizarReferenciaCatastral("")).toBeNull();
+  });
+});
+
+describe("nombres no reconocidos y parcela por coordenadas", () => {
+  it("detecta errores de vía, calle o población", () => {
+    expect(
+      erroresNombreCatastroNoReconocido([
+        "EL NOMBRE DE LA VIA NO EXISTE",
+        "NO EXISTE LA CALLE",
+        "NO EXISTE LA POBLACION",
+      ])
+    ).toBe(true);
+    expect(erroresNombreCatastroNoReconocido(["NUMERO NO EXISTE"])).toBe(false);
+  });
+
+  it("lee la referencia de parcela de Consulta_RCCOOR", () => {
+    expect(
+      referenciaParcelaDesdeRccoor({
+        Consulta_RCCOORResult: {
+          coordenadas: {
+            coord: [{ pc: { pc1: "6222327", pc2: "YJ2762C" }, ldt: "CL HERNAN CORTES 5 VALENCIA (VALENCIA)" }],
+          },
+        },
+      })
+    ).toBe("6222327YJ2762C");
+    expect(
+      referenciaParcelaDesdeRccoor({
+        Consulta_RCCOORResult: { lerr: [{ des: "PARA ESAS COORDENADAS NO HAY REFERENCIA DISPONIBLE" }] },
+      })
+    ).toBeNull();
   });
 });
 
@@ -302,21 +334,16 @@ describe("parseConsultaDnpLoc", () => {
       {
         referenciaCatastral: "7107501YJ2770G0110LR",
         tipoUso: "Vivienda",
-        superficieConstruida: "108",
-      },
-      {
-        referenciaCatastral: "7107501YJ2770G0110LR",
-        tipoUso: "Elementos Comunes",
-        superficieConstruida: "22",
+        superficieConstruida: "130",
       },
     ]);
-    expect(resultado.detallesUsos.find((d) => d.tipoUso === "Comercio")).toBeUndefined();
-    expect(resultado.candidatos).toHaveLength(2);
+    expect(resultado.detallesUsos.find((d) => /elementos comunes/i.test(d.tipoUso))).toBeUndefined();
+    expect(resultado.candidatos).toHaveLength(1);
     expect(resultado.candidatos[0].campos.codigoPostalC).toBe("46013");
     expect(resultado.candidatos[0].campos.plantaC).toBe("02");
     expect(resultado.candidatos[0].campos.puertaC).toBe("A");
     expect(resultado.candidatos[0].detalleCatastro?.tipoUso).toBe("Vivienda");
-    expect(resultado.candidatos[0].detalleCatastro?.superficieConstruida).toBe("108");
+    expect(resultado.candidatos[0].detalleCatastro?.superficieConstruida).toBe("130");
     expect(candidatoPreferidoDireccionCatastro(resultado.candidatos)?.campos.codigoPostalC).toBe("46013");
   });
 
@@ -350,10 +377,7 @@ describe("parseConsultaDnpLoc", () => {
         { referenciaCatastral: "RC1", tipoUso: "Vivienda", superficieConstruida: "108" },
         { referenciaCatastral: "RC1", tipoUso: "Elementos Comunes", superficieConstruida: "22" },
       ])
-    ).toEqual([
-      { referenciaCatastral: "RC1", tipoUso: "Vivienda", superficieConstruida: "108" },
-      { referenciaCatastral: "RC1", tipoUso: "Elementos Comunes", superficieConstruida: "22" },
-    ]);
+    ).toEqual([{ referenciaCatastral: "RC1", tipoUso: "Vivienda", superficieConstruida: "130" }]);
   });
 
   it("agrega superficies por tipo de uso para una parcela", () => {
@@ -416,6 +440,62 @@ describe("parseConsultaDnpLoc", () => {
       VIVIENDA: 136,
       COMERCIO: 24.3,
     });
+  });
+
+  it("suma los elementos comunes al uso del mismo inmueble", () => {
+    const payload = {
+      consulta_dnprcResult: {
+        bico: {
+          lcons: [
+            { lcd: "VIVIENDA", dfcons: { stl: "100" } },
+            { lcd: "ELEMENTOS COMUNES", dfcons: { stl: "14" } },
+            { lcd: "APARCAMIENTO", dfcons: { stl: "20" } },
+            { lcd: "ELEMENTOS COMUNES", dfcons: { stl: "3" } },
+            { lcd: "COMERCIO", dfcons: { stl: "40" } },
+          ],
+        },
+      },
+    };
+
+    expect(extraerUsosJsonDesdeConsultaDnprc(payload)).toEqual({
+      VIVIENDA: 114,
+      APARCAMIENTO: 23,
+      COMERCIO: 40,
+    });
+  });
+
+  it("suma los elementos comunes de plaza y trastero al aparcamiento", () => {
+    const payload = {
+      consulta_dnprcResult: {
+        bico: {
+          bi: {
+            idbi: { rc: { pc1: "7107501", pc2: "YJ2770G", car: "0224", cc1: "P", cc2: "K" } },
+            dt: {
+              np: "VALENCIA",
+              nm: "VALENCIA",
+              locs: { lous: { lourb: { dir: { tv: "AV", nv: "ALCALDE GISBERT RICO", pnp: "33" }, dp: "46013" } } },
+            },
+          },
+          lcons: [
+            { lcd: "APARCAMIENTO", dfcons: { stl: "10" } },
+            { lcd: "ALMACEN", dfcons: { stl: "7" } },
+            { lcd: "ELEMENTOS COMUNES", dfcons: { stl: "20" } },
+          ],
+        },
+      },
+    };
+
+    expect(extraerUsosJsonDesdeConsultaDnprc(payload)).toEqual({
+      APARCAMIENTO: 30,
+      ALMACEN: 7,
+    });
+
+    const resultado = parseConsultaCatastro(payload);
+    expect(resultado.detallesUsos).toEqual([
+      expect.objectContaining({ tipoUso: "Aparcamiento", superficieConstruida: "30" }),
+      expect.objectContaining({ tipoUso: "Almacen", superficieConstruida: "7" }),
+    ]);
+    expect(resultado.detallesUsos.some((detalle) => /elementos comunes/i.test(detalle.tipoUso))).toBe(false);
   });
 
   it("suma UsosJSON de todos los inmuebles de la parcela", () => {

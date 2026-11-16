@@ -5,6 +5,10 @@ import {
   codigoMunicipioCatastroPolizaSync,
   construirUrlWebCatastro,
   debeImprimirCroquisTrasAbrir,
+  delegacionMunicipioParaDescarga,
+  documentoNormalizacionCatastro,
+  nombreVistaSateliteCatastro,
+  referenciaParcelaMapa,
   resolverUrlWebCatastroPolizaSync,
   URL_CATASTRO_BUSCAR_MAPA,
   URL_IMPRIMIR_CROQUIS_CATASTRO,
@@ -139,6 +143,38 @@ describe("construirUrlWebCatastro (guión WebCatastro)", () => {
     expect(url).toContain(`RefC=${ref}`);
     expect(url).toContain("&del=46");
     expect(url).toContain("&mun=900");
+  });
+
+  it("inmueble de 20 caracteres descarga el PDF de consulta descriptiva y gráfica", () => {
+    const doc = documentoNormalizacionCatastro("7107501YJ2770G0106KE", "46", "900");
+    expect(doc?.tipo).toBe("pdf");
+    expect(doc?.ruta).toContain("ref=7107501YJ2770G0106KE");
+    expect(doc?.ruta).toContain("del=46");
+    expect(doc?.ruta).toContain("mun=900");
+    expect(doc?.nombre).toBe("7107501YJ2770G0106KE.pdf");
+  });
+
+  it("parcela de 14 caracteres descarga el Excel de referencias", () => {
+    const doc = documentoNormalizacionCatastro("7107501YJ2770G", "", "");
+    expect(doc?.tipo).toBe("excel");
+    expect(doc?.ruta).toContain("rc=7107501YJ2770G");
+    expect(doc?.nombre).toBe("Listado_inmuebles_7107501YJ2770G.xlsx");
+  });
+
+  it("la vista satélite usa la parcela y marca el nombre del inmueble", () => {
+    expect(referenciaParcelaMapa("7107501YJ2770G0106KE")).toBe("7107501YJ2770G");
+    expect(referenciaParcelaMapa("7107501YJ2770G")).toBe("7107501YJ2770G");
+    expect(nombreVistaSateliteCatastro("7107501YJ2770G")).toBe("Cartografia_7107501YJ2770G.pdf");
+    expect(nombreVistaSateliteCatastro("7107501YJ2770G0106KE")).toBe("Cartografia_7107501YJ2770G0106KE.pdf");
+  });
+
+  it("usa el código INE de la ficha del catastro para el PDF", () => {
+    expect(
+      delegacionMunicipioParaDescarga(
+        { loine: { cp: "46", cm: "900" }, np: "VALENCIA", nm: "VALENCIA" },
+        polizaValencia
+      )
+    ).toEqual({ del: "46", mun: "900" });
   });
 
   it("resolverUrlWebCatastroPolizaSync ignora otra RC y usa siempre poliza.catastro", () => {

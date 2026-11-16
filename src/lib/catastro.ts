@@ -330,6 +330,38 @@ export function puedeConsultarCatastroOficial(poliza: Poliza) {
   return Boolean(esConsultaCatastroPorReferencia(poliza) || parametrosConsultaCatastro(poliza));
 }
 
+/** El callejero rechaza topónimos que no coinciden con su nomenclátor (p. ej. valenciano de Google). */
+export function erroresNombreCatastroNoReconocido(errores: string[]) {
+  return errores.some((error) => {
+    const texto = normalizarTexto(error);
+    const mencionaLugar = /\b(via|calle|poblacion|municipio)\b/.test(texto);
+    return mencionaLugar && texto.includes("no existe");
+  });
+}
+
+type RccoorCoord = {
+  pc?: { pc1?: string; pc2?: string };
+};
+
+export function referenciaParcelaDesdeRccoor(payload: unknown): string | null {
+  const root = (payload as { Consulta_RCCOORResult?: { coordenadas?: { coord?: RccoorCoord | RccoorCoord[] } } })
+    ?.Consulta_RCCOORResult;
+  const coordRaw = root?.coordenadas?.coord;
+  const coord = Array.isArray(coordRaw) ? coordRaw[0] : coordRaw;
+  const ref = `${coord?.pc?.pc1 ?? ""}${coord?.pc?.pc2 ?? ""}`.trim().toUpperCase();
+  if (!ref || !esReferenciaCatastralValida(ref)) return null;
+  return ref;
+}
+
+function mensajeErrorRccoor(payload: unknown) {
+  const root = (payload as { Consulta_RCCOORResult?: { lerr?: { des?: string } | { des?: string }[] } })
+    ?.Consulta_RCCOORResult;
+  const errores = asArray(root?.lerr)
+    .map((item) => item.des)
+    .filter(Boolean) as string[];
+  return errores[0] ?? "";
+}
+
 export function codigoPostalDesdeDt(dt?: CatastroDt) {
   const lourb = dt?.locs?.lous?.lourb ?? dt?.locs?.lors?.lourb;
   if (lourb?.dp?.trim()) return lourb.dp.trim();
@@ -397,25 +429,156 @@ export function etiquetaUsoParcela(uso: string) {
   return titleCase(uso);
 }
 
+function usoCatastroNormalizado(uso: string) {
+  return uso
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function esUsoElementosComunes(uso: string) {
+  const normalizado = usoCatastroNormalizado(uso);
+  return normalizado === "ELEMENTOS COMUNES" || normalizado === "ELEMENTO COMUN";
+}
+
+function esUsoAparcamiento(uso: string) {
+  const normalizado = usoCatastroNormalizado(uso);
+  return normalizado === "APARCAMIENTO" || normalizado === "ESTACIONAMIENTO";
+}
+
+function esUsoAlmacen(uso: string) {
+  const normalizado = usoCatastroNormalizado(uso);
+  return normalizado === "ALMACEN" || normalizado.startsWith("ALMACEN ");
+}
+
+/**
+ * Suma los elementos comunes al uso del mismo inmueble.
+ * Si la referencia trae aparcamiento y almacén, los elementos comunes (van detrás de ambos) son del aparcamiento.
+ * En el resto, se suman al uso anterior, o al siguiente si van delante.
+ */
+export function incorporarElementosComunesEnDetalles(
+  detalles: DetalleCatastroDesdeCatastro[]
+): DetalleCatastroDesdeCatastro[] {
+  const usosPorReferencia = new Map<string, { aparcamiento: boolean; almacen: boolean }>();
+  detalles.forEach((detalle) => {
+    const actual = usosPorReferencia.get(detalle.referenciaCatastral) ?? {
+      aparcamiento: false,
+      almacen: false,
+    };
+    if (esUsoAparcamiento(detalle.tipoUso)) actual.aparcamiento = true;
+    if (esUsoAlmacen(detalle.tipoUso)) actual.almacen = true;
+    usosPorReferencia.set(detalle.referenciaCatastral, actual);
+  });
+  const comunesAlAparcamiento = new Set(
+    [...usosPorReferencia.entries()]
+      .filter(([, usos]) => usos.aparcamiento && usos.almacen)
+      .map(([referencia]) => referencia)
+  );
+
+  const resultado: DetalleCatastroDesdeCatastro[] = [];
+  const pendientes = new Map<string, number>();
+  const pendientesAparcamiento = new Map<string, number>();
+
+  const sumar = (detalle: DetalleCatastroDesdeCatastro, extra: number) => {
+    const actual = Number.parseFloat(String(detalle.superficieConstruida ?? "").replace(",", "."));
+    const base = Number.isFinite(actual) ? actual : 0;
+    detalle.superficieConstruida = formatearSuperficieAgregada(base + extra);
+  };
+
+  detalles.forEach((detalle) => {
+    const referencia = detalle.referenciaCatastral;
+    const superficie = Number.parseFloat(String(detalle.superficieConstruida ?? "").replace(",", "."));
+    if (!Number.isFinite(superficie)) return;
+
+    if (esUsoElementosComunes(detalle.tipoUso)) {
+      if (comunesAlAparcamiento.has(referencia)) {
+        const plaza = [...resultado]
+          .reverse()
+          .find((item) => item.referenciaCatastral === referencia && esUsoAparcamiento(item.tipoUso));
+        if (plaza) sumar(plaza, superficie);
+        else pendientesAparcamiento.set(referencia, (pendientesAparcamiento.get(referencia) ?? 0) + superficie);
+        return;
+      }
+
+      const previo = [...resultado]
+        .reverse()
+        .find(
+          (item) => item.referenciaCatastral === referencia && !esUsoElementosComunes(item.tipoUso)
+        );
+      if (previo) sumar(previo, superficie);
+      else pendientes.set(referencia, (pendientes.get(referencia) ?? 0) + superficie);
+      return;
+    }
+
+    const copia = { ...detalle };
+    const extraAparcamiento = esUsoAparcamiento(copia.tipoUso) ? pendientesAparcamiento.get(referencia) ?? 0 : 0;
+    const extra = extraAparcamiento || (pendientes.get(referencia) ?? 0);
+    if (extra) {
+      sumar(copia, extra);
+      if (extraAparcamiento) pendientesAparcamiento.delete(referencia);
+      else pendientes.delete(referencia);
+    }
+    resultado.push(copia);
+  });
+
+  pendientesAparcamiento.forEach((superficie, referencia) => {
+    const plaza = [...resultado]
+      .reverse()
+      .find((item) => item.referenciaCatastral === referencia && esUsoAparcamiento(item.tipoUso));
+    if (plaza) sumar(plaza, superficie);
+    else pendientes.set(referencia, (pendientes.get(referencia) ?? 0) + superficie);
+  });
+
+  pendientes.forEach((superficie, referencia) => {
+    resultado.push({
+      referenciaCatastral: referencia,
+      tipoUso: "Elementos Comunes",
+      superficieConstruida: formatearSuperficieAgregada(superficie),
+    });
+  });
+
+  return resultado;
+}
+
+/** Si queda una partida suelta de elementos comunes y hay otros usos, se suma al de más superficie. */
+export function absorberElementosComunesEnUsos(usos: Record<string, number>): Record<string, number> {
+  const claveComunes = Object.keys(usos).find((clave) => esUsoElementosComunes(clave));
+  if (!claveComunes) return usos;
+
+  const otros = Object.entries(usos).filter(([clave]) => clave !== claveComunes);
+  if (otros.length === 0) return usos;
+
+  const [destino] = otros.reduce((mayor, actual) => (actual[1] > mayor[1] ? actual : mayor));
+  const resultado = { ...usos, [destino]: (usos[destino] ?? 0) + (usos[claveComunes] ?? 0) };
+  delete resultado[claveComunes];
+  return resultado;
+}
+
 /** Igual que FileMaker: suma superficies por clave lcd en lcons (UsosJSON). */
 export function extraerUsosJsonDesdeConsultaDnprc(payload: unknown): Record<string, number> {
   const root = (payload as { consulta_dnprcResult?: Record<string, unknown> }).consulta_dnprcResult;
   const bico = normalizarBico(root);
+  const detalles = incorporarElementosComunesEnDetalles(
+    asArray(bico?.lcons).flatMap((unidad) => {
+      const clave = String(unidad.lcd ?? "")
+        .trim()
+        .replace(/"/g, "");
+      const stl = Number.parseFloat(String(unidad.dfcons?.stl ?? "").replace(",", "."));
+      if (!clave || !Number.isFinite(stl)) return [];
+      return [{ referenciaCatastral: "", tipoUso: clave, superficieConstruida: String(stl) }];
+    })
+  );
+
   const usos: Record<string, number> = {};
-
-  asArray(bico?.lcons).forEach((unidad) => {
-    const clave = String(unidad.lcd ?? "")
-      .trim()
-      .replace(/"/g, "");
-    if (!clave) return;
-
-    const stl = Number.parseFloat(String(unidad.dfcons?.stl ?? "").replace(",", "."));
-    if (!Number.isFinite(stl)) return;
-
-    usos[clave] = (usos[clave] ?? 0) + stl;
+  detalles.forEach((detalle) => {
+    const superficie = Number.parseFloat(String(detalle.superficieConstruida).replace(",", "."));
+    if (!Number.isFinite(superficie)) return;
+    usos[detalle.tipoUso] = (usos[detalle.tipoUso] ?? 0) + superficie;
   });
 
-  return usos;
+  return absorberElementosComunesEnUsos(usos);
 }
 
 /** Datos de CAT_DetalleCatastro_ActualizarUsosPorRC20 (DNPRC por RC20). */
@@ -443,7 +606,7 @@ export function sumarUsosJsonParcela(lista: Record<string, number>[]): Record<st
     });
   });
 
-  return agg;
+  return absorberElementosComunesEnUsos(agg);
 }
 
 export function detallesCatastroDesdeUsosParcelaJson(
@@ -807,7 +970,7 @@ function extraerDetallesUsosBico(
       seen.add(key);
       detalles.push(detalle);
     });
-    return detalles;
+    return incorporarElementosComunesEnDetalles(detalles);
   }
 
   const debi = bico?.bi?.debi;
@@ -822,15 +985,16 @@ function extraerDetallesUsosBico(
 export function filtrarDetallesUsosConstructivos(
   detalles: DetalleCatastroDesdeCatastro[]
 ): DetalleCatastroDesdeCatastro[] {
-  if (detalles.length <= 1) return detalles;
+  const incorporados = incorporarElementosComunesEnDetalles(detalles);
+  if (incorporados.length <= 1) return incorporados;
 
-  const hayUnidadesConstructivas = detalles.some(
-    (detalle) => !/^residencial$/i.test(detalle.tipoUso.trim())
+  const hayUnidadesConstructivas = incorporados.some(
+    (detalle) => !/^residencial$/i.test(detalle.tipoUso.trim()) && !esUsoElementosComunes(detalle.tipoUso)
   );
 
-  if (!hayUnidadesConstructivas) return detalles;
+  if (!hayUnidadesConstructivas) return incorporados;
 
-  return detalles.filter((detalle) => !/^residencial$/i.test(detalle.tipoUso.trim()));
+  return incorporados.filter((detalle) => !/^residencial$/i.test(detalle.tipoUso.trim()));
 }
 
 export function candidatoPreferidoDireccionCatastro(candidatos: CandidatoCatastro[]) {
@@ -1038,22 +1202,59 @@ export function parseConsultaCatastro(payload: unknown): ResultadoNormalizacionC
     const unidades = asArray(bico.lcons);
 
     if (unidades.length > 0) {
-      unidades.forEach((unidad, index) => {
-        add(
-          crearCandidato(
-            dt,
-            rc,
-            unidad.dt?.lourb?.loint,
-            {
-              uso: unidad.lcd,
-              tipologia: unidad.dvcons?.dtip,
-              anoConstruccion,
-              superficieUnidad: unidad.dfcons?.stl,
-              indice: index,
-            },
-            unidad.dt
-          )
+      let elementosComunesPendientes = 0;
+      const elementosComunesVanAlAparcamiento =
+        unidades.some((unidad) => esUsoAparcamiento(String(unidad.lcd ?? ""))) &&
+        unidades.some((unidad) => esUsoAlmacen(String(unidad.lcd ?? "")));
+      const sumarSuperficieCandidato = (candidato: CandidatoCatastro, extra: number) => {
+        const actual = Number.parseFloat(
+          String(candidato.detalleCatastro?.superficieConstruida ?? "").replace(",", ".")
         );
+        const total = (Number.isFinite(actual) ? actual : 0) + extra;
+        const texto = formatearSuperficieAgregada(total);
+        const anterior = candidato.detalleCatastro?.superficieConstruida;
+        if (candidato.detalleCatastro) candidato.detalleCatastro.superficieConstruida = texto;
+        if (anterior && candidato.etiqueta.includes(`${anterior} m²`)) {
+          candidato.etiqueta = candidato.etiqueta.replace(`${anterior} m²`, `${texto} m²`);
+        }
+      };
+
+      unidades.forEach((unidad, index) => {
+        const superficie = Number.parseFloat(String(unidad.dfcons?.stl ?? "").replace(",", "."));
+        if (esUsoElementosComunes(String(unidad.lcd ?? ""))) {
+          const plaza = elementosComunesVanAlAparcamiento
+            ? [...candidatos].reverse().find((candidato) =>
+                esUsoAparcamiento(candidato.detalleCatastro?.tipoUso ?? "")
+              )
+            : undefined;
+          const previo = plaza ?? candidatos[candidatos.length - 1];
+          if (previo && Number.isFinite(superficie)) sumarSuperficieCandidato(previo, superficie);
+          else if (Number.isFinite(superficie)) elementosComunesPendientes += superficie;
+          return;
+        }
+
+        const candidato = crearCandidato(
+          dt,
+          rc,
+          unidad.dt?.lourb?.loint,
+          {
+            uso: unidad.lcd,
+            tipologia: unidad.dvcons?.dtip,
+            anoConstruccion,
+            superficieUnidad: unidad.dfcons?.stl,
+            indice: index,
+          },
+          unidad.dt
+        );
+        const recibePendientes =
+          elementosComunesPendientes &&
+          Number.isFinite(superficie) &&
+          (!elementosComunesVanAlAparcamiento || esUsoAparcamiento(String(unidad.lcd ?? "")));
+        if (recibePendientes) {
+          sumarSuperficieCandidato(candidato, elementosComunesPendientes);
+          elementosComunesPendientes = 0;
+        }
+        add(candidato);
       });
     } else {
       const loint = dt.locs?.lous?.lourb?.loint ?? dt.locs?.lors?.lourb?.loint;
@@ -1219,4 +1420,25 @@ export async function normalizarDireccionCatastro(poliza: Poliza): Promise<Resul
   }
 
   return finalizarResultadoCatastro(resultado, poliza);
+}
+
+/** Localiza la parcela por coordenadas y normaliza con los nombres oficiales del catastro. */
+export async function consultarCatastroPorCoordenadas(
+  latitud: string,
+  longitud: string
+): Promise<ResultadoNormalizacionCatastro> {
+  const params = new URLSearchParams({ lat: latitud.trim(), lng: longitud.trim() });
+  const res = await fetch(`/api/catastro/rccoor?${params}`);
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error((data as { error?: string })?.error || "No se pudo localizar la parcela en el catastro");
+  }
+
+  const ref = referenciaParcelaDesdeRccoor(data);
+  if (!ref) {
+    throw new Error(mensajeErrorRccoor(data) || "El catastro no encontró una parcela en esas coordenadas");
+  }
+
+  return normalizarDireccionCatastro({ catastro: ref } as Poliza);
 }

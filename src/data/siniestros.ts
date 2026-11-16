@@ -92,6 +92,9 @@ export interface Asegurado {
   provincia: string;
   pais: string;
   direccionCompleta: string;
+  latitud: string;
+  longitud: string;
+  parcelaCatastral: string;
   email: string;
   telefono: string;
   telefonoSecundario: string;
@@ -317,6 +320,9 @@ export const aseguradoMock: Asegurado = {
   provincia: "Madrid",
   pais: "España",
   direccionCompleta: "C/ Mayor 23 · 4 B · 28013 Madrid",
+  latitud: "",
+  longitud: "",
+  parcelaCatastral: "",
   email: "antonio@example.com",
   telefono: "600000000",
   telefonoSecundario: "",

@@ -4,6 +4,8 @@ import path from "path";
 import fs from "fs";
 import { componentTagger } from "lovable-tagger";
 import basicSsl from "@vitejs/plugin-basic-ssl";
+import { jpegAPdf } from "./src/lib/carpetaDocSiniestro";
+import { guardarDocumentoEnDocSiniestro } from "./src/lib/guardarDocSiniestroServidor";
 
 /** Misma regla que src/lib/catastro.ts (sin importar el módulo: usa alias @/). */
 function esReferenciaCatastralValida(ref: string) {
@@ -45,6 +47,46 @@ type GoogleGeocodeResponse = {
 };
 
 type NormalizedAddress = ReturnType<typeof normalizeGoogleResult>;
+
+function cartociudadPlugin(): Plugin {
+  return {
+    name: "local-cartociudad-api",
+    configureServer(server) {
+      server.middlewares.use("/api/cartociudad/candidates", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const q = url.searchParams.get("q")?.trim();
+          if (!q) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Falta la dirección a normalizar" }));
+            return;
+          }
+
+          const destino = new URL("https://www.cartociudad.es/geocoder/api/geocoder/candidates");
+          destino.searchParams.set("q", q);
+          destino.searchParams.set("limit", "8");
+          const cartociudadRes = await fetch(destino, { signal: AbortSignal.timeout(20000) });
+          const data = await cartociudadRes.json().catch(() => null);
+          if (!cartociudadRes.ok || !Array.isArray(data)) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "CartoCiudad no devolvió direcciones" }));
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error consultando CartoCiudad" }));
+        }
+      });
+    },
+  };
+}
 
 function geocodePlugin(apiKey?: string): Plugin {
   return {
@@ -338,6 +380,8 @@ const CATASTRO_DNPLOC_BASE =
   "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/Consulta_DNPLOC";
 const CATASTRO_DNPRC_BASE =
   "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/Consulta_DNPRC";
+const CATASTRO_RCCOOR_BASE =
+  "https://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCoordenadas.svc/json/Consulta_RCCOOR";
 
 function catastroPlugin(): Plugin {
   return {
@@ -410,6 +454,318 @@ function catastroPlugin(): Plugin {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error consultando catastro" }));
         }
       });
+
+      server.middlewares.use("/api/catastro/rccoor", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const lat = url.searchParams.get("lat")?.trim();
+          const lng = url.searchParams.get("lng")?.trim();
+
+          if (!lat || !lng || Number.isNaN(Number(lat)) || Number.isNaN(Number(lng))) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Faltan coordenadas para localizar la parcela" }));
+            return;
+          }
+
+          const catastroRes = await fetch(
+            `${CATASTRO_RCCOOR_BASE}?SRS=EPSG:4326&CoorX=${encodeURIComponent(lng)}&CoorY=${encodeURIComponent(lat)}`
+          );
+          const data = await catastroRes.json().catch(() => null);
+
+          if (!catastroRes.ok || !data) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "No se pudo localizar la parcela en el catastro" }));
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error consultando catastro" }));
+        }
+      });
+
+      server.middlewares.use("/api/catastro/consulta-pdf", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const ref = url.searchParams.get("ref")?.trim().toUpperCase().replace(/[\s.-]/g, "") ?? "";
+          const del = url.searchParams.get("del")?.trim() ?? "";
+          const mun = url.searchParams.get("mun")?.trim() ?? "";
+
+          if (!esReferenciaCatastralValida(ref) || ref.length !== 20 || !/^\d{1,2}$/.test(del) || !/^\d{1,3}$/.test(mun)) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Faltan la referencia o el municipio para el PDF del catastro" }));
+            return;
+          }
+
+          const pdfUrl =
+            "https://www1.sedecatastro.gob.es/CYCBienInmueble/SECImprimirCroquisYDatos.aspx?" +
+            new URLSearchParams({ del, mun, refcat: ref }).toString();
+          const pdfRes = await fetch(pdfUrl);
+          const tipo = pdfRes.headers.get("content-type") || "";
+
+          if (!pdfRes.ok || !tipo.includes("pdf")) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "El catastro no devolvió el PDF de la consulta descriptiva y gráfica" }));
+            return;
+          }
+
+          const body = Buffer.from(await pdfRes.arrayBuffer());
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${ref}.pdf"`);
+          res.end(body);
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error descargando el PDF del catastro" }));
+        }
+      });
+
+      server.middlewares.use("/api/catastro/lista-excel", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const ref = url.searchParams.get("rc")?.trim().toUpperCase().replace(/[\s.-]/g, "") ?? "";
+
+          if (!esReferenciaCatastralValida(ref) || ref.length !== 14) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "La referencia de parcela debe tener 14 caracteres" }));
+            return;
+          }
+
+          const listaUrl =
+            "https://www1.sedecatastro.gob.es/CYCBienInmueble/OVCListaBienes.aspx?" +
+            new URLSearchParams({
+              RC1: ref.slice(0, 7),
+              RC2: ref.slice(7, 14),
+              RCCompleta: ` ${ref}`,
+              from: "OVCBusqueda",
+              pest: "rc",
+            }).toString();
+          const pagina = await fetch(listaUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+          const html = await pagina.text();
+          const campo = (nombre: string) => {
+            const match = html.match(new RegExp(`name="${nombre}"[^>]*value="([^"]*)"`));
+            return (match?.[1] ?? "")
+              .replace(/&amp;/g, "&")
+              .replace(/&quot;/g, '"')
+              .replace(/&#39;/g, "'")
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">");
+          };
+          const viewState = campo("__VIEWSTATE");
+          if (!pagina.ok || !viewState) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "No se pudo abrir el listado de la parcela en el catastro" }));
+            return;
+          }
+
+          const cookies = (
+            typeof pagina.headers.getSetCookie === "function" ? pagina.headers.getSetCookie() : []
+          )
+            .map((item) => item.split(";")[0])
+            .filter(Boolean)
+            .join("; ");
+          const cuerpo = new URLSearchParams({
+            __EVENTTARGET: "ctl00$Contenido$btnExcel",
+            __EVENTARGUMENT: "",
+            __VIEWSTATE: viewState,
+            __VIEWSTATEGENERATOR: campo("__VIEWSTATEGENERATOR"),
+            __EVENTVALIDATION: campo("__EVENTVALIDATION"),
+          });
+          const excelRes = await fetch(listaUrl, {
+            method: "POST",
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+              "Content-Type": "application/x-www-form-urlencoded",
+              Referer: listaUrl,
+              ...(cookies ? { Cookie: cookies } : {}),
+            },
+            body: cuerpo,
+          });
+          const tipoExcel = excelRes.headers.get("content-type") || "";
+          if (!excelRes.ok || !tipoExcel.includes("spreadsheet")) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "El catastro no devolvió el Excel de referencias de la parcela" }));
+            return;
+          }
+
+          const body = Buffer.from(await excelRes.arrayBuffer());
+          res.statusCode = 200;
+          res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          );
+          res.setHeader("Content-Disposition", `attachment; filename="Listado_inmuebles_${ref}.xlsx"`);
+          res.end(body);
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error descargando el Excel del catastro" }));
+        }
+      });
+
+      server.middlewares.use("/api/catastro/guardar-en-doc", async (req, res) => {
+        try {
+          if (req.method !== "POST") {
+            res.statusCode = 405;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Hay que enviar el documento del catastro" }));
+            return;
+          }
+
+          const numeros = JSON.parse(
+            decodeURIComponent(String(req.headers["x-siniestro-numeros"] ?? ""))
+          ) as unknown;
+          const nombre = decodeURIComponent(String(req.headers["x-nombre-archivo"] ?? ""));
+          if (!Array.isArray(numeros) || numeros.some((numero) => typeof numero !== "string")) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Falta el número del siniestro en curso" }));
+            return;
+          }
+
+          const trozos: Buffer[] = [];
+          let total = 0;
+          for await (const trozo of req) {
+            const buffer = Buffer.isBuffer(trozo) ? trozo : Buffer.from(trozo);
+            total += buffer.length;
+            if (total > 25_000_000) throw new Error("El documento del catastro es demasiado grande");
+            trozos.push(buffer);
+          }
+
+          const ruta = guardarDocumentoEnDocSiniestro(numeros, nombre, Buffer.concat(trozos));
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ruta }));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "No se pudo guardar en la carpeta DOC" }));
+        }
+      });
+
+      server.middlewares.use("/api/catastro/vista-satelite", async (req, res) => {
+        try {
+          const url = new URL(req.url || "", "http://localhost");
+          const refCompleta = url.searchParams.get("rc")?.trim().toUpperCase().replace(/[\s.-]/g, "") ?? "";
+          const ref = refCompleta.slice(0, 14);
+
+          if (!esReferenciaCatastralValida(refCompleta)) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "La referencia catastral no es válida para la vista satélite" }));
+            return;
+          }
+
+          const coordenadas = async (srs: string) => {
+            const consulta =
+              "https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCoordenadas.asmx/Consulta_CPMRC?" +
+              new URLSearchParams({ Provincia: "", Municipio: "", SRS: srs, RC: ref }).toString();
+            const respuesta = await fetch(consulta, { signal: AbortSignal.timeout(20000) });
+            const xml = await respuesta.text();
+            const x = xml.match(/<xcen>([^<]+)<\/xcen>/)?.[1];
+            const y = xml.match(/<ycen>([^<]+)<\/ycen>/)?.[1];
+            if (!respuesta.ok || !x || !y) {
+              const error = xml.match(/<des>([^<]+)<\/des>/)?.[1];
+              throw new Error(error || "El catastro no devolvió coordenadas de la parcela");
+            }
+            return { x: Number(x), y: Number(y) };
+          };
+
+          const geograficas = await coordenadas("EPSG:4326");
+          const huso = Math.floor((geograficas.x + 180) / 6) + 1;
+          const srs = `EPSG:${25800 + huso}`;
+          const centro = await coordenadas(srs);
+          const ancho = 960;
+          const alto = 720;
+          const metrosAncho = 160;
+          const metrosAlto = (metrosAncho * alto) / ancho;
+          const bbox = [
+            centro.x - metrosAncho / 2,
+            centro.y - metrosAlto / 2,
+            centro.x + metrosAncho / 2,
+            centro.y + metrosAlto / 2,
+          ].join(",");
+          const pnoaUrl =
+            "https://www.ign.es/wms-inspire/pnoa-ma?" +
+            new URLSearchParams({
+              SERVICE: "WMS",
+              VERSION: "1.1.1",
+              REQUEST: "GetMap",
+              LAYERS: "OI.OrthoimageCoverage",
+              STYLES: "",
+              SRS: srs,
+              BBOX: bbox,
+              WIDTH: String(ancho),
+              HEIGHT: String(alto),
+              FORMAT: "image/jpeg",
+            }).toString();
+          const catastroUrl =
+            "https://ovc.catastro.meh.es/Cartografia/WMS/ServidorWMS.aspx?" +
+            new URLSearchParams({
+              SERVICE: "WMS",
+              VERSION: "1.1.1",
+              REQUEST: "GetMap",
+              LAYERS: "Catastro",
+              STYLES: "",
+              TRANSPARENT: "TRUE",
+              SRS: srs,
+              BBOX: bbox,
+              WIDTH: String(ancho),
+              HEIGHT: String(alto),
+              FORMAT: "image/png",
+            }).toString();
+          const [fondoRes, catastroRes] = await Promise.all([
+            fetch(pnoaUrl, { signal: AbortSignal.timeout(30000) }),
+            fetch(catastroUrl, { signal: AbortSignal.timeout(30000) }),
+          ]);
+          const fondoTipo = fondoRes.headers.get("content-type") || "";
+          const catastroTipo = catastroRes.headers.get("content-type") || "";
+          if (!fondoRes.ok || !fondoTipo.includes("jpeg") || !catastroRes.ok || !catastroTipo.includes("png")) {
+            res.statusCode = 502;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "No se pudo obtener la ortofoto o el parcelario del catastro" }));
+            return;
+          }
+
+          const chincheta = Buffer.from(
+            `<svg width="64" height="80" viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="32" cy="74" rx="9" ry="3.5" fill="rgba(0,0,0,0.4)"/>
+              <path d="M32 70 C18 52 8 40 8 26 C8 12 19 4 32 4 C45 4 56 12 56 26 C56 40 46 52 32 70 Z" fill="#dc2626" stroke="#ffffff" stroke-width="3"/>
+              <circle cx="32" cy="26" r="8" fill="#ffffff"/>
+            </svg>`
+          );
+          const { default: sharp } = await import("sharp");
+          const jpeg = await sharp(Buffer.from(await fondoRes.arrayBuffer()))
+            .composite([
+              { input: Buffer.from(await catastroRes.arrayBuffer()), top: 0, left: 0 },
+              { input: chincheta, top: Math.round(alto / 2 - 70), left: Math.round(ancho / 2 - 32) },
+            ])
+            .jpeg({ quality: 82 })
+            .toBuffer();
+          const body = jpegAPdf(jpeg, ancho, alto);
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="Cartografia_${refCompleta}.pdf"`);
+          res.end(body);
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Error generando la vista satélite" }));
+        }
+      });
     },
   };
 }
@@ -444,6 +800,7 @@ export default defineConfig(({ mode }) => {
       react(),
       usarHttps && !certificadoDev && basicSsl(),
       geocodePlugin(env.GOOGLE_MAPS_API_KEY),
+      cartociudadPlugin(),
       catastroPlugin(),
       mode === "development" && componentTagger(),
     ].filter(Boolean),

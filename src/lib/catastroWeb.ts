@@ -1,4 +1,4 @@
-import { prepararReferenciaCatastroWeb } from "@/lib/catastro";
+import { CatastroDt, prepararReferenciaCatastroWeb } from "@/lib/catastro";
 import {
   codigoMunicipioCatastroInmediato,
   partesCodigoMunicipioCatastro,
@@ -6,6 +6,7 @@ import {
 } from "@/lib/codigosMunicipiosCatastro";
 import { Poliza } from "@/data/siniestros";
 import { textoCampo } from "@/lib/textoCampo";
+import { anticiparCarpetaPortatil, guardarDocumentoEnPortatil } from "@/lib/guardarDocSiniestroNavegador";
 
 export { prepararReferenciaCatastroWeb };
 
@@ -234,6 +235,129 @@ export function programarImprimirCroquisYDatos(
 
 export function debeImprimirCroquisTrasAbrir(poliza: Poliza) {
   return casoWebCatastroPoliza(poliza) === "inmueble20";
+}
+
+export function delegacionMunicipioParaDescarga(dt: CatastroDt | undefined, poliza: Poliza) {
+  const delDt = textoCampo(dt?.loine?.cp);
+  const munDt = textoCampo(dt?.loine?.cm);
+  if (delDt && munDt) return { del: delDt, mun: munDt };
+
+  return partesCodigoMunicipioCatastro(codigoMunicipioCatastroPolizaSync(poliza));
+}
+
+export type DocumentoNormalizacionCatastro = {
+  tipo: "pdf" | "excel";
+  ruta: string;
+  nombre: string;
+};
+
+/** Inmueble (20): PDF de consulta descriptiva y gráfica. Parcela (14): Excel de referencias. */
+export function documentoNormalizacionCatastro(
+  referencia: string,
+  del: string,
+  mun: string
+): DocumentoNormalizacionCatastro | null {
+  const ref = prepararReferenciaCatastroWeb(referencia);
+  if (!ref) return null;
+
+  if (ref.length === 20) {
+    if (!del || !mun) return null;
+    return {
+      tipo: "pdf",
+      ruta: `/api/catastro/consulta-pdf?${new URLSearchParams({ del, mun, ref })}`,
+      nombre: `${ref}.pdf`,
+    };
+  }
+
+  if (ref.length === 14) {
+    return {
+      tipo: "excel",
+      ruta: `/api/catastro/lista-excel?${new URLSearchParams({ rc: ref })}`,
+      nombre: `Listado_inmuebles_${ref}.xlsx`,
+    };
+  }
+
+  return null;
+}
+
+function guardarDescarga(blob: Blob, nombre: string) {
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  // La imagen satélite pesa más que el Excel: revocar al momento cancela esa descarga.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export type ResultadoDescargaCatastro = { destino: "doc"; ruta: string } | { destino: "descarga" };
+
+/** La carpeta del siniestro está en el portátil que abre la web, no en el servidor. */
+export function anticiparCarpetaDocPortatil() {
+  anticiparCarpetaPortatil();
+}
+
+async function guardarBlobCatastro(
+  blob: Blob,
+  nombre: string,
+  numerosSiniestro?: string[]
+): Promise<ResultadoDescargaCatastro> {
+  if (!numerosSiniestro?.length) {
+    guardarDescarga(blob, nombre);
+    return { destino: "descarga" };
+  }
+
+  try {
+    const guardado = await guardarDocumentoEnPortatil(blob, nombre, numerosSiniestro);
+    if (guardado.destino === "descarga") guardarDescarga(blob, nombre);
+    return guardado;
+  } catch (error) {
+    guardarDescarga(blob, nombre);
+    const motivo = error instanceof Error ? error.message : "No se pudo guardar en la carpeta del siniestro";
+    throw new Error(`${motivo}. El archivo se ha descargado en el navegador.`);
+  }
+}
+
+export async function descargarDocumentoNormalizacionCatastro(
+  doc: DocumentoNormalizacionCatastro,
+  numerosSiniestro?: string[]
+) {
+  const res = await fetch(doc.ruta);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error || "No se pudo descargar el documento del catastro");
+  }
+
+  return guardarBlobCatastro(await res.blob(), doc.nombre, numerosSiniestro);
+}
+
+export function referenciaParcelaMapa(referencia: string) {
+  const ref = prepararReferenciaCatastroWeb(referencia);
+  if (!ref || (ref.length !== 14 && ref.length !== 20)) return null;
+  return ref.slice(0, 14);
+}
+
+export function nombreVistaSateliteCatastro(referencia: string) {
+  const ref = prepararReferenciaCatastroWeb(referencia);
+  if (!ref || (ref.length !== 14 && ref.length !== 20)) return null;
+  return `Cartografia_${ref}.pdf`;
+}
+
+/** Cartografía del catastro con ortofoto, la misma vista de la opción Cartografía. */
+export async function descargarVistaSateliteCatastro(referencia: string, numerosSiniestro?: string[]) {
+  const nombre = nombreVistaSateliteCatastro(referencia);
+  const ref = prepararReferenciaCatastroWeb(referencia);
+  if (!nombre || !ref) return null;
+
+  const res = await fetch(`/api/catastro/vista-satelite?rc=${encodeURIComponent(ref)}`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error || "No se pudo descargar la vista satélite del catastro");
+  }
+
+  return guardarBlobCatastro(await res.blob(), nombre, numerosSiniestro);
 }
 
 /** Sin noopener: el opener debe poder ejecutar el javascript: de la sede. */
